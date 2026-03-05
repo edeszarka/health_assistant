@@ -1,0 +1,23 @@
+[
+    {
+        "relation": "maternal_grandmother",
+        "condition": "Type 2 Diabetes",
+        "icd10_code": "E11",
+        "age_of_onset": 58,
+        "notes": "Managed with oral medication. No insulin required."
+    },
+    {
+        "relation": "father",
+        "condition": "Hypertension",
+        "icd10_code": "I10",
+        "age_of_onset": 52,
+        "notes": "On antihypertensive therapy since age 52."
+    },
+    {
+        "relation": "paternal_grandfather",
+        "condition": "Myocardial Infarction",
+        "icd10_code": "I21",
+        "age_of_onset": 67,
+        "notes": "Fatal heart attack at age 67."
+    }
+]

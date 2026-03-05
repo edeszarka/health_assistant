@@ -1,0 +1,56 @@
+version: "3.9"
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: healthassistant
+      POSTGRES_USER: healthuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U healthuser -d healthassistant" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant
+      SYNC_DATABASE_URL: postgresql+psycopg2://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.1:8b
+      EMBED_MODEL: nomic-embed-text
+      EMBED_DIMENSIONS: 768
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+
+volumes:
+  postgres_data:
+  ollama_data:

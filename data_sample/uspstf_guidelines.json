@@ -1,0 +1,198 @@
+[
+    {
+        "id": "uspstf_001",
+        "title": "Blood Pressure Screening in Adults",
+        "grade": "A",
+        "population": "Adults 18+",
+        "min_age": 18,
+        "max_age": 999,
+        "sex": "all",
+        "condition": "hypertension",
+        "recommendation": "Screen for high blood pressure in adults 18 years or older. Obtain measurements outside of the clinical setting for diagnostic confirmation before starting treatment.",
+        "frequency": "Annual",
+        "specialist": "GP",
+        "icd10_relevant": [
+            "I10"
+        ],
+        "medlineplus_term": "high blood pressure"
+    },
+    {
+        "id": "uspstf_002",
+        "title": "Colorectal Cancer Screening",
+        "grade": "A",
+        "population": "Adults 45–75",
+        "min_age": 45,
+        "max_age": 75,
+        "sex": "all",
+        "condition": "colorectal cancer",
+        "recommendation": "Screen for colorectal cancer in all adults aged 45 to 75 years.",
+        "frequency": "Varies by method (1–10 years)",
+        "specialist": "Gastroenterologist",
+        "icd10_relevant": [
+            "C18",
+            "C19",
+            "C20"
+        ],
+        "medlineplus_term": "colorectal cancer screening"
+    },
+    {
+        "id": "uspstf_003",
+        "title": "Breast Cancer Screening",
+        "grade": "B",
+        "population": "Women 40–74",
+        "min_age": 40,
+        "max_age": 74,
+        "sex": "female",
+        "condition": "breast cancer",
+        "recommendation": "Screen for breast cancer with mammography every 2 years for women aged 40 to 74 years.",
+        "frequency": "Every 2 years",
+        "specialist": "Radiologist",
+        "icd10_relevant": [
+            "C50"
+        ],
+        "medlineplus_term": "mammogram"
+    },
+    {
+        "id": "uspstf_004",
+        "title": "Cervical Cancer Screening",
+        "grade": "A",
+        "population": "Women 21–65",
+        "min_age": 21,
+        "max_age": 65,
+        "sex": "female",
+        "condition": "cervical cancer",
+        "recommendation": "Screen for cervical cancer in women aged 21 to 65 years with cytology (Pap smear) every 3 years or, for women aged 30 to 65 years, every 5 years with high-risk HPV testing.",
+        "frequency": "Every 3–5 years",
+        "specialist": "Gynecologist",
+        "icd10_relevant": [
+            "C53"
+        ],
+        "medlineplus_term": "cervical cancer screening"
+    },
+    {
+        "id": "uspstf_005",
+        "title": "Prediabetes and Type 2 Diabetes Screening",
+        "grade": "B",
+        "population": "Adults 35–70 who are overweight or obese",
+        "min_age": 35,
+        "max_age": 70,
+        "sex": "all",
+        "condition": "type 2 diabetes",
+        "recommendation": "Screen for prediabetes and type 2 diabetes in adults aged 35 to 70 years who have overweight or obesity.",
+        "frequency": "Every 3 years",
+        "specialist": "GP",
+        "icd10_relevant": [
+            "E11",
+            "R73"
+        ],
+        "medlineplus_term": "diabetes screening"
+    },
+    {
+        "id": "uspstf_006",
+        "title": "Lipid Disorders Screening in Younger Adults",
+        "grade": "B",
+        "population": "Adults 21+ at elevated risk",
+        "min_age": 21,
+        "max_age": 999,
+        "sex": "all",
+        "condition": "dyslipidemia",
+        "recommendation": "Screen for lipid disorders in adults at increased risk of cardiovascular disease.",
+        "frequency": "Every 4–6 years",
+        "specialist": "Cardiologist",
+        "icd10_relevant": [
+            "E78"
+        ],
+        "medlineplus_term": "cholesterol"
+    },
+    {
+        "id": "uspstf_007",
+        "title": "Lung Cancer Screening",
+        "grade": "B",
+        "population": "Adults 50–80 with ≥20 pack-year smoking history",
+        "min_age": 50,
+        "max_age": 80,
+        "sex": "all",
+        "condition": "lung cancer",
+        "recommendation": "Screen for lung cancer with annual low-dose computed tomography (LDCT) in adults aged 50 to 80 years who have a 20 pack-year smoking history and currently smoke or have quit within the past 15 years.",
+        "frequency": "Annual",
+        "specialist": "Pulmonologist",
+        "icd10_relevant": [
+            "C34"
+        ],
+        "medlineplus_term": "lung cancer screening"
+    },
+    {
+        "id": "uspstf_008",
+        "title": "Abdominal Aortic Aneurysm Screening",
+        "grade": "B",
+        "population": "Men 65–75 who have ever smoked",
+        "min_age": 65,
+        "max_age": 75,
+        "sex": "male",
+        "condition": "abdominal aortic aneurysm",
+        "recommendation": "Screen for abdominal aortic aneurysm (AAA) with a one-time abdominal duplex ultrasonography in men aged 65 to 75 years who have ever smoked.",
+        "frequency": "Once",
+        "specialist": "Vascular Surgeon",
+        "icd10_relevant": [
+            "I71.4"
+        ],
+        "medlineplus_term": "abdominal aortic aneurysm"
+    },
+    {
+        "id": "uspstf_009",
+        "title": "Osteoporosis Screening",
+        "grade": "B",
+        "population": "Women 65+ or postmenopausal women <65 at elevated risk",
+        "min_age": 65,
+        "max_age": 999,
+        "sex": "female",
+        "condition": "osteoporosis",
+        "recommendation": "Screen for osteoporosis with bone measurement testing (DEXA scan) to prevent osteoporotic fractures in women 65 years and older.",
+        "frequency": "Every 2 years",
+        "specialist": "Rheumatologist",
+        "icd10_relevant": [
+            "M81"
+        ],
+        "medlineplus_term": "osteoporosis"
+    },
+    {
+        "id": "uspstf_010",
+        "title": "Depression Screening in Adults",
+        "grade": "B",
+        "population": "Adults 18+",
+        "min_age": 18,
+        "max_age": 999,
+        "sex": "all",
+        "condition": "depression",
+        "recommendation": "Screen for depression in the general adult population, including pregnant and postpartum women. Screening should be implemented with adequate systems in place to ensure accurate diagnosis, effective treatment, and appropriate follow-up.",
+        "frequency": "Annual",
+        "specialist": "GP",
+        "icd10_relevant": [
+            "F32",
+            "F33"
+        ],
+        "medlineplus_term": "depression"
+    },
+    {
+        "id": "uspstf_011",
+        "title": "Thyroid Dysfunction Screening",
+        "grade": "I (Insufficient Evidence)",
+        "population": "Adults, particularly women 35+",
+        "min_age": 35,
+        "max_age": 999,
+        "sex": "female",
+        "condition": "thyroid dysfunction",
+        "recommendation": "Current evidence is insufficient to assess the balance of benefits and harms of screening for thyroid dysfunction in non-pregnant, asymptomatic adults.",
+        "frequency": "As clinically indicated",
+        "specialist": "Endocrinologist",
+        "icd10_relevant": [
+            "E00",
+            "E01",
+            "E02",
+            "E03",
+            "E04",
+            "E05"
+        ],
+        "medlineplus_term": "thyroid diseases"
+    }
+]
