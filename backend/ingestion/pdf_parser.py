@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pdfplumber
 
-from backend.config import settings
+from config import settings
 
 
 class PDFParser:
@@ -103,6 +103,9 @@ class PDFParser:
             ref_range_low, ref_range_high, test_date.
         """
         text = self.extract_text_from_bytes(content)
+        print(f"[DEBUG] Extracted text length from PDF: {len(text)}")
+        if text:
+            print(f"[DEBUG] Extracted text sample: {text[:200]}...")
         return await self._extract_from_text(text)
 
     # ── Internal ─────────────────────────────────────────────────────────────
@@ -131,10 +134,12 @@ class PDFParser:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=1000.0) as client:
                 resp = await client.post(self._ollama_url, json=payload)
                 resp.raise_for_status()
                 raw = resp.json().get("response", "")
+                print(f"[DEBUG] Raw LLM response length: {len(raw)}")
+                print(f"[DEBUG] Raw LLM response: {raw[:500]}...") # Log first 500 chars
         except Exception as exc:
             raise RuntimeError(f"Ollama call failed during lab extraction: {exc}") from exc
 
@@ -147,12 +152,18 @@ class PDFParser:
             if not isinstance(data, list):
                 return []
             return data
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse LLM raw response directly: {e}\nRaw={raw}")
             # Try to find a JSON array in the text
             match = re.search(r"\[.*\]", raw, re.DOTALL)
             if match:
                 try:
-                    return json.loads(match.group(0))
-                except json.JSONDecodeError:
-                    pass
+                    parsed = json.loads(match.group(0))
+                    if isinstance(parsed, list):
+                        return parsed
+                    return []
+                except json.JSONDecodeError as e2:
+                    print(f"[ERROR] Failed to parse extracted JSON array: {e2}")
+            else:
+                print("[ERROR] No JSON array pattern found in the response.")
             return []

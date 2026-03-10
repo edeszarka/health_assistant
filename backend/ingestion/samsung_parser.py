@@ -148,29 +148,61 @@ class SamsungHealthParser:
 
     @staticmethod
     def _read_csv(content: bytes) -> list[dict[str, Any]]:
-        """Try CSV; fall back to JSON."""
-        try:
-            text = content.decode("utf-8", errors="replace")
-            reader = csv.DictReader(io.StringIO(text))
-            return list(reader)
-        except Exception:
-            pass
+        """Try multiple encodings for CSV; fall back to JSON."""
+        # Try different encodings
+        for encoding in ("utf-8", "utf-16", "utf-8-sig", "latin-1"):
+            try:
+                text = content.decode(encoding)
+                # If it's UTF-16, check if it actually looks like text
+                if encoding == "utf-16" and "\x00" in text[:100]:
+                    continue # likely wrong
+                
+                # Check if we have at least some commas or tabs
+                if "," not in text and "\t" not in text and len(text) > 10:
+                    if encoding != "latin-1": # latin-1 is fallback
+                        continue
+                
+                reader = csv.DictReader(io.StringIO(text))
+                rows = list(reader)
+                if rows and len(rows[0]) > 0:
+                    print(f"[DEBUG] Successfully decoded CSV with {encoding}")
+                    return rows
+            except Exception:
+                continue
+
+        # Fallback to JSON
         try:
             data = json.loads(content)
             if isinstance(data, list):
                 return data
         except Exception:
             pass
+        
+        print("[ERROR] Failed to decode file content as CSV or JSON")
         return []
 
     @staticmethod
     def _parse_date(raw: str) -> datetime | None:
         """Try several date formats used by Samsung Health."""
-        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S.%f", 
+            "%Y-%m-%d %H:%M:%S", 
+            "%Y-%m-%d", 
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M"
+        ):
             try:
                 return datetime.strptime(raw.strip(), fmt)
             except ValueError:
                 continue
+        
+        # Try partial match if it's a long ISO string with timezone
+        if len(raw) > 19:
+            try:
+                return datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+            except ValueError:
+                pass
+                
         return None
 
     @staticmethod
