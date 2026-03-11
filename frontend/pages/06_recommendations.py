@@ -15,7 +15,7 @@ URGENCY_CONFIG = {
 }
 
 try:
-    recs = httpx.get(f"{BACKEND}/recommendations/", timeout=60.0).json()
+    recs = httpx.get(f"{BACKEND}/recommendations/", timeout=1200.0).json()
 except Exception as e:
     st.error(f"Could not load recommendations: {e}")
     st.stop()

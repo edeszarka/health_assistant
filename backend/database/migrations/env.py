@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 # Import all models so Alembic can detect them
-from backend.config import settings
-from backend.database.connection import Base
-from backend.models import db_models  # noqa: F401
+from config import settings
+from database.connection import Base
+from models import db_models  # noqa: F401
 
 config = context.config
 

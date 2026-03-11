@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import httpx
 
-from backend.config import settings
+from config import settings
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are a knowledgeable personal health assistant. Help the user understand their lab results,
+_BASE_PROMPT = """You are a knowledgeable personal health assistant. Help the user understand their lab results,
 health trends, blood pressure readings, and preventive care needs.
 You handle text in Hungarian and English — always respond in the same language the user writes in.
 
@@ -40,6 +40,16 @@ Rules:
 - If the user writes in Hungarian, respond entirely in Hungarian"""
 
 
+def build_system_prompt(query_type: str) -> str:
+    """Return the system prompt customized by the query type."""
+    if query_type == "risk_analysis":
+        # Let the model think (take its time) for deeper analysis
+        return _BASE_PROMPT
+    else:
+        # Prevent the model from "thinking" (chain-of-thought equivalent like <think> block usage)
+        return "/no_think\n\n" + _BASE_PROMPT
+
+
 class LLMService:
     """Sends chat requests to Ollama and returns the text reply."""
 
@@ -54,6 +64,7 @@ class LLMService:
         context: str,
         user_profile: object | None = None,
         risk_scores: dict | None = None,
+        query_type: str = "general",
     ) -> str:
         """Send a message to Ollama and return the LLM reply.
 
@@ -63,6 +74,7 @@ class LLMService:
             context: RAG-assembled context string.
             user_profile: UserProfile ORM row or None.
             risk_scores: Dict with framingham and findrisc keys.
+            query_type: Indicates if this is a standard chat or a risk analysis.
 
         Returns:
             The assistant's reply as a plain string.
@@ -70,7 +82,9 @@ class LLMService:
         profile = user_profile
         rs = risk_scores or {}
 
-        system_content = SYSTEM_PROMPT_TEMPLATE.format(
+        template = build_system_prompt(query_type)
+
+        system_content = template.format(
             age=getattr(profile, "age", "Unknown"),
             sex=getattr(profile, "sex", "Unknown"),
             smoking=getattr(profile, "smoking", False),
@@ -95,7 +109,7 @@ class LLMService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=1000.0) as client:
                 resp = await client.post(
                     f"{self._base_url}/api/chat",
                     json=payload,

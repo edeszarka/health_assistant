@@ -11,8 +11,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.config import settings
-from backend.models.db_models import MedlinePlusCache
+from config import settings
+from models.db_models import MedlinePlusCache
 
 
 class _TokenBucket:

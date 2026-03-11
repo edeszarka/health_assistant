@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database.connection import init_db
-from backend.routers import upload, chat, blood_pressure, family_history, dashboard, recommendations
+from database.connection import init_db
+from routers import upload, chat, blood_pressure, family_history, dashboard, recommendations
 
 
 @asynccontextmanager

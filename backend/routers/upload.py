@@ -8,13 +8,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.config import settings
-from backend.ingestion.pdf_parser import PDFParser
-from backend.ingestion.lab_normalizer import LabNormalizer
-from backend.ingestion.samsung_parser import SamsungHealthParser
-from backend.models.db_models import LabResult, SamsungHealthMetric
-from backend.services.rag_service import rag_service
+from database.connection import get_db
+from config import settings
+from ingestion.pdf_parser import PDFParser
+from ingestion.lab_normalizer import LabNormalizer
+from ingestion.samsung_parser import SamsungHealthParser
+from models.db_models import LabResult, SamsungHealthMetric
+from services.rag_service import rag_service
 
 router = APIRouter()
 pdf_parser = PDFParser()
@@ -46,35 +46,32 @@ async def upload_pdf(
     saved_path.write_bytes(content)
 
     try:
-        raw_labs = await pdf_parser.parse_lab_results_from_bytes(content, file.filename)
+        report = pdf_parser.parse(saved_path)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Lab extraction failed: {exc}")
 
     stored = 0
-    for lab in raw_labs:
+    for lab in report.results:
         try:
-            normalised_name = lab_norm.normalize(lab.get("raw_name", ""))
-            ref_low = lab.get("ref_range_low")
-            ref_high = lab.get("ref_range_high")
-            value = float(lab.get("value", 0))
-            is_flagged = False
-            if ref_low is not None and ref_high is not None:
-                is_flagged = not (float(ref_low) <= value <= float(ref_high))
+            normalised_name = lab.normalized_name
+            value = lab.value
+            
+            if value is None:
+                continue  # Skip if we can't parse the value
 
-            from datetime import date
-            raw_date = lab.get("test_date")
+            ref_low = lab.ref_range_low
+            ref_high = lab.ref_range_high
+            is_flagged = lab.is_flagged
+
             test_date = None
-            if raw_date:
-                try:
-                    test_date = date.fromisoformat(raw_date)
-                except ValueError:
-                    pass
+            if report.patient.sample_date:
+                test_date = report.patient.sample_date.date()
 
             row = LabResult(
                 test_name=normalised_name,
-                raw_name=lab.get("raw_name", ""),
+                raw_name=lab.raw_name,
                 value=value,
-                unit=lab.get("unit", ""),
+                unit=lab.unit,
                 ref_range_low=ref_low,
                 ref_range_high=ref_high,
                 is_flagged=is_flagged,
@@ -86,16 +83,18 @@ async def upload_pdf(
 
             # Embed
             embed_text = (
-                f"Lab result: {normalised_name} = {value} {lab.get('unit', '')}. "
+                f"Lab result: {normalised_name} = {value} {lab.unit}. "
                 f"{'FLAGGED OUT OF RANGE.' if is_flagged else 'Within reference range.'}"
             )
             await rag_service.store_embedding("lab_result", row.id, embed_text, db)
             stored += 1
-        except Exception:
+        except Exception as e:
+            print(f"Failed to store lab result {lab}: {e}")
             continue
 
     await db.commit()
-    return {"filename": file.filename, "extracted": len(raw_labs), "stored": stored}
+    print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {file.filename}")
+    return {"filename": file.filename, "extracted": len(report.results), "stored": stored}
 
 
 @router.post("/samsung")

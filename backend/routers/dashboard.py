@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.models.api_models import DashboardSummary, LabResultResponse, BPSummaryResponse
-from backend.models.db_models import LabResult, RiskScore
-from backend.routers.blood_pressure import bp_summary
+from database.connection import get_db
+from models.api_models import DashboardSummary, LabResultResponse, BPSummaryResponse
+from models.db_models import LabResult, RiskScore
+from routers.blood_pressure import bp_summary
 
 router = APIRouter()
 

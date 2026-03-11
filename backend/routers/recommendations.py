@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.models.api_models import ScreeningRecommendation
-from backend.models.db_models import UserProfile, FamilyHistory, LabResult, RiskScore
-from backend.services.screening_service import screening_service
+from database.connection import get_db
+from models.api_models import ScreeningRecommendation
+from models.db_models import UserProfile, FamilyHistory, LabResult, RiskScore
+from services.screening_service import screening_service
 
 router = APIRouter()
 

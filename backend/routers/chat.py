@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.models.api_models import ChatRequest, ChatResponse
-from backend.models.db_models import UserProfile
-from backend.services.rag_service import rag_service
-from backend.services.llm_service import llm_service
+from database.connection import get_db
+from models.api_models import ChatRequest, ChatResponse
+from models.db_models import UserProfile
+from services.rag_service import rag_service
+from services.llm_service import llm_service
 
 router = APIRouter()
 
@@ -48,6 +48,7 @@ async def chat(
             conversation_history=request.conversation_history,
             context=context,
             user_profile=profile,
+            query_type=request.query_type,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")

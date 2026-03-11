@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.medlineplus_service import MedlinePlusService
+from services.medlineplus_service import MedlinePlusService
 
 
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>

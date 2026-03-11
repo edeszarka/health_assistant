@@ -24,7 +24,7 @@ with tab_pdf:
                 resp = httpx.post(
                     f"{BACKEND}/upload/pdf",
                     files={"file": (pdf_file.name, pdf_file.getvalue(), "application/pdf")},
-                    timeout=120.0,
+                    timeout=1200.0,
                 )
                 resp.raise_for_status()
                 result = resp.json()
@@ -33,6 +33,12 @@ with tab_pdf:
                     f"extracted {result.get('extracted', 0)}, "
                     f"stored {result.get('stored', 0)} results."
                 )
+            except httpx.HTTPStatusError as e:
+                try:
+                    detail = e.response.json().get("detail", e.response.text)
+                except Exception:
+                    detail = e.response.text
+                st.error(f"Upload failed: {detail}")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
 
@@ -50,7 +56,7 @@ with tab_samsung:
                 resp = httpx.post(
                     f"{BACKEND}/upload/samsung",
                     files={"file": (zip_file.name, zip_file.getvalue(), "application/zip")},
-                    timeout=60.0,
+                    timeout=1200.0,
                 )
                 resp.raise_for_status()
                 result = resp.json()
@@ -59,5 +65,11 @@ with tab_samsung:
                     f"{result.get('metrics_extracted', 0)} metrics extracted, "
                     f"{result.get('stored', 0)} stored."
                 )
+            except httpx.HTTPStatusError as e:
+                try:
+                    detail = e.response.json().get("detail", e.response.text)
+                except Exception:
+                    detail = e.response.text
+                st.error(f"Upload failed: {detail}")
             except Exception as e:
                 st.error(f"Upload failed: {e}")

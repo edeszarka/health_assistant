@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.ingestion.pdf_parser import PDFParser
+from ingestion.pdf_parser import PDFParser
 
 
 def test_pdf_parser_is_callable():

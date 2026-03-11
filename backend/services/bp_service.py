@@ -1,6 +1,6 @@
 from sqlalchemy import select
-from backend.database.connection import SessionLocal
-from backend.models.db_models import BloodPressure
+from database.connection import SessionLocal
+from models.db_models import BloodPressure
 
 class BPService:
     async def add_reading(self, user_id: int, systolic: int, diastolic: int, pulse: int = None):

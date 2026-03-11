@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.rag_service import RAGService
+from services.rag_service import RAGService
 
 
 FAKE_EMBEDDING = [0.1] * 768  # 768-dimensional dummy vector

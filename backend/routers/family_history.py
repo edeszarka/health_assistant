@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.models.api_models import FamilyHistoryCreate, FamilyHistoryResponse
-from backend.models.db_models import FamilyHistory
-from backend.services.rag_service import rag_service
-from backend.services.medlineplus_service import medlineplus_service
+from database.connection import get_db
+from models.api_models import FamilyHistoryCreate, FamilyHistoryResponse
+from models.db_models import FamilyHistory
+from services.rag_service import rag_service
+from services.medlineplus_service import medlineplus_service
 
 router = APIRouter()
 
