@@ -38,7 +38,7 @@ Usage:
 import csv
 import io
 import logging
-import zipfile
+import pyzipper
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Known gap: band not worn between these dates (inclusive)
 DEFAULT_GAP_START = date(2024, 2, 1)
-DEFAULT_GAP_END   = date(2026, 2, 1)
+DEFAULT_GAP_END   = date(2025, 2, 1)
 
 # Mi Band 5 resting heart rate plausible range
 HR_MIN_PLAUSIBLE = 30
@@ -410,11 +410,16 @@ def _safe_float(value: str, default: Optional[float] = None) -> Optional[float]:
 
 
 def _find_column(header: list[str], candidates: list[str]) -> Optional[str]:
-    """Case-insensitive column name lookup."""
-    lower_header = {h.lower(): h for h in header}
+    """Case-insensitive column name lookup with fuzzy matching for BOM/spaces."""
+    header_map = {h.lower().strip().replace("\ufeff", ""): h for h in header}
     for c in candidates:
-        if c.lower() in lower_header:
-            return lower_header[c.lower()]
+        c_low = c.lower().strip()
+        if c_low in header_map:
+            return header_map[c_low]
+        # Also try direct contains for cases like "time (UTC)"
+        for h_low, h_orig in header_map.items():
+            if c_low in h_low:
+                return h_orig
     return None
 
 
@@ -494,6 +499,7 @@ class ZeppParser:
         "%Y-%m-%d %H:%M",
         "%d/%m/%Y %H:%M:%S",
         "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S%z",
     ]
 
     def __init__(
@@ -541,7 +547,7 @@ class ZeppParser:
     def _parse_zip(self, zip_path: Path, password: str = None) -> ZeppReport:
         report = ZeppReport()
         pwd_bytes = password.encode("utf-8") if password else None
-        with zipfile.ZipFile(zip_path, "r") as zf:
+        with pyzipper.AESZipFile(zip_path, "r") as zf:
             if pwd_bytes:
                 zf.setpassword(pwd_bytes)
             self._parse_all(report, file_reader=self._zip_reader(zf, pwd_bytes))
@@ -560,6 +566,10 @@ class ZeppParser:
         }
         for key, parser_fn in parsers.items():
             content = file_reader(key)
+            # Special case for heart rate which sometimes uses HEARTRATE_AUTO
+            if key == "HEARTRATE" and content is None:
+                content = file_reader("HEARTRATE_AUTO")
+                
             if content is not None:
                 report.files_found.append(key)
                 try:
@@ -600,12 +610,14 @@ class ZeppParser:
             return None
         return reader
 
-    def _zip_reader(self, zf: zipfile.ZipFile, pwd_bytes: bytes = None):
+    def _zip_reader(self, zf: pyzipper.AESZipFile, pwd_bytes: bytes = None):
         """Returns a callable that looks up CSV files by key name in ZIP."""
         names = zf.namelist()
         def reader(key: str) -> Optional[str]:
             for name in names:
-                if key.upper() in name.upper() and name.endswith(".csv"):
+                # Zepp export sometimes wraps files in a HEALTH_DATA/ directory
+                clean_name = name.split("/")[-1]
+                if key.upper() in clean_name.upper() and name.endswith(".csv"):
                     with zf.open(name, pwd=pwd_bytes) as f:
                         return f.read().decode("utf-8", errors="replace")
             return None
@@ -617,13 +629,20 @@ class ZeppParser:
 
     def _csv_rows(self, content: str) -> tuple[list[str], list[dict]]:
         """Parse CSV content, return (header, rows). Skips comment/metadata rows."""
+        if not content:
+            return [], []
+        # Handle BOM if present in the string
+        if content.startswith("\ufeff"):
+            content = content.lstrip("\ufeff")
+            
         lines = content.splitlines()
         # Zepp sometimes puts metadata in the first 1-2 rows before the header
         # Find the header row (first row that contains recognizable column names)
         header_idx = 0
         for i, line in enumerate(lines):
-            if "," in line and any(
-                kw in line.lower()
+            clean_line = line.lower().strip().replace("\ufeff", "")
+            if "," in clean_line and any(
+                kw in clean_line
                 for kw in ["date", "time", "heart", "step", "sleep", "stress", "spo2", "weight"]
             ):
                 header_idx = i
@@ -632,7 +651,7 @@ class ZeppParser:
         reader = csv.DictReader(lines[header_idx:])
         rows = list(reader)
         header = reader.fieldnames or []
-        return list(header), rows
+        return [h.strip() for h in header], rows
 
     def _parse_heart_rate(self, content: str, report: ZeppReport) -> None:
         """
@@ -642,7 +661,7 @@ class ZeppParser:
         header, rows = self._csv_rows(content)
         date_col = _find_column(header, ["date", "Date"])
         time_col = _find_column(header, ["time", "Time"])
-        hr_col   = _find_column(header, ["heartRate", "heart_rate", "bpm", "value", "HeartRate"])
+        hr_col   = _find_column(header, ["heartRate", "heart_rate", "bpm", "value", "HeartRate", "heart_rate_value"])
 
         if not hr_col:
             report.parse_errors.append("HEARTRATE: could not find heart rate column")
@@ -749,7 +768,7 @@ class ZeppParser:
         steps_col = _find_column(header, ["steps", "step", "Steps", "totalStep"])
         dist_col  = _find_column(header, ["distance", "Distance", "dis"])
         cal_col   = _find_column(header, ["calories", "calorie", "Calories", "cal"])
-        val_col   = _find_column(header, ["value", "level", "activityLevel"])
+        val_col   = _find_column(header, ["value", "level", "activityLevel", "activity_level", "activity_stage"])
 
         # Detect format: aggregated daily vs per-minute stages
         is_daily = steps_col is not None
