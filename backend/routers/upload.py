@@ -4,8 +4,10 @@ from __future__ import annotations
 import os
 import uuid
 from pathlib import Path
+from typing import List, Optional
+from datetime import datetime, date
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
@@ -13,6 +15,7 @@ from config import settings
 from ingestion.pdf_parser import PDFParser
 from ingestion.lab_normalizer import LabNormalizer
 from ingestion.samsung_parser import SamsungHealthParser
+from ingestion.zepp_parser import ZeppParser
 from models.db_models import LabResult, SamsungHealthMetric
 from services.rag_service import rag_service
 
@@ -20,6 +23,7 @@ router = APIRouter()
 pdf_parser = PDFParser()
 lab_norm = LabNormalizer()
 samsung_parser = SamsungHealthParser()
+zepp_parser = ZeppParser()
 
 
 @router.post("/pdf")
@@ -99,46 +103,168 @@ async def upload_pdf(
 
 @router.post("/samsung")
 async def upload_samsung(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
+    # password: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Upload Samsung Health ZIP export, extract metrics, store in DB, embed weekly summaries.
+    """Upload Samsung Health ZIP or multiple CSVs, extract metrics, store in DB.
 
     Args:
-        file: The uploaded ZIP file.
+        files: One ZIP file or multiple CSV files.
+        password: Password if encrypted (not usually for Samsung, but supported).
         db: Async DB session.
 
     Returns:
         Summary of extracted metrics.
     """
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Only ZIP files accepted.")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
 
-    content = await file.read()
+    upload_dir = Path(settings.upload_dir) / uuid.uuid4().hex
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    is_zip = False
+    source_name = "samsung_upload"
+    for file in files:
+        if file.filename.lower().endswith(".zip"):
+            is_zip = True
+            source_name = file.filename
+        file_path = upload_dir / file.filename
+        file_path.write_bytes(await file.read())
+
     try:
-        metrics = samsung_parser.parse_zip_bytes(content, file.filename)
+        current_path = upload_dir / source_name if is_zip else upload_dir
+        # report = samsung_parser.parse(current_path, password=password)
+        report = samsung_parser.parse(current_path)
+        if not is_zip:
+            source_name = "multiple_csvs"
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Samsung parsing failed: {exc}")
 
     stored = 0
-    for m in metrics:
+    for ds in report.daily_summaries():
         try:
-            row = SamsungHealthMetric(
-                metric_type=m.metric_type,
-                value=m.value,
-                recorded_at=m.recorded_at,
-                source_file=file.filename,
-            )
-            db.add(row)
-            stored += 1
+            raw_date = ds["date"]
+            if isinstance(raw_date, str):
+                record_date = datetime.fromisoformat(raw_date)
+            else:
+                record_date = raw_date
+
+            if isinstance(record_date, date) and not isinstance(record_date, datetime):
+                record_date = datetime.combine(record_date, datetime.min.time())
+
+            metrics_to_store = {
+                "steps": ds.get("steps"),
+                "distance_m": ds.get("distance_m"),
+                "active_time_min": ds.get("active_time_min"),
+                "active_calories": ds.get("active_calories"),
+                "water_ml": ds.get("water_ml"),
+                "weight_kg": ds.get("weight_kg"),
+                "bmi": ds.get("bmi"),
+            }
+            
+            for m_type, m_val in metrics_to_store.items():
+                if m_val is not None:
+                    db.add(SamsungHealthMetric(
+                        metric_type=m_type,
+                        value=float(m_val),
+                        recorded_at=record_date,
+                        source_file=source_name
+                    ))
+                    stored += 1
         except Exception:
             continue
 
     await db.commit()
 
-    # Embed a weekly summary of steps (as an example)
     if stored > 0:
-        summary = f"Samsung Health import: {stored} metrics from '{file.filename}'."
-        await rag_service.store_embedding("samsung_summary", None, summary, db)
+        overall_summary = report.summary()
+        await rag_service.store_embedding("samsung_summary", None, overall_summary, db)
 
-    return {"filename": file.filename, "metrics_extracted": len(metrics), "stored": stored}
+    return {"filename": source_name, "metrics_extracted": len(report.daily_summaries()), "stored": stored}
+
+
+@router.post("/zepp")
+async def upload_zepp(
+    files: List[UploadFile] = File(...),
+    password: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Upload Zepp Life ZIP or multiple CSVs, extract metrics, store in DB.
+
+    Args:
+        files: One ZIP file or multiple CSV files.
+        password: Password for the encrypted zip (default test is TIHFqBtV).
+        db: Async DB session.
+
+    Returns:
+        Summary of extracted metrics.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+
+    upload_dir = Path(settings.upload_dir) / uuid.uuid4().hex
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    is_zip = False
+    source_name = "zepp_upload"
+    for file in files:
+        if file.filename.lower().endswith(".zip"):
+            is_zip = True
+            source_name = file.filename
+        file_path = upload_dir / file.filename
+        file_path.write_bytes(await file.read())
+
+    try:
+        current_path = upload_dir / source_name if is_zip else upload_dir
+        report = zepp_parser.parse(current_path, password=password)
+        # report = zepp_parser.parse(current_path)
+        if not is_zip:
+            source_name = "multiple_csvs"
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Zepp parsing failed: {exc}")
+
+    stored = 0
+    for ds in report.daily_summaries():
+        try:
+            raw_date = ds["date"]
+            if isinstance(raw_date, str):
+                record_date = datetime.fromisoformat(raw_date)
+            else:
+                record_date = raw_date
+
+            if isinstance(record_date, date) and not isinstance(record_date, datetime):
+                record_date = datetime.combine(record_date, datetime.min.time())
+
+            metrics_to_store = {
+                "steps": ds.get("steps"),
+                "resting_hr": ds.get("resting_hr"),
+                "sleep_total_min": ds.get("sleep_total_min"),
+                "sleep_deep_min":  ds.get("sleep_deep_min"),
+                "sleep_light_min": ds.get("sleep_light_min"),
+                "sleep_rem_min":   ds.get("sleep_rem_min"),
+                "avg_spo2":        ds.get("avg_spo2"),
+                "avg_stress":      ds.get("avg_stress"),
+                "weight_kg":       ds.get("weight_kg"),
+                "bmi":             ds.get("bmi"),
+            }
+            
+            for m_type, m_val in metrics_to_store.items():
+                if m_val is not None:
+                    db.add(SamsungHealthMetric(
+                        metric_type=m_type,
+                        value=float(m_val),
+                        recorded_at=record_date,
+                        source_file=source_name
+                    ))
+                    stored += 1
+        except Exception:
+            continue
+
+    await db.commit()
+
+    if stored > 0:
+        overall_summary = report.summary()
+        await rag_service.store_embedding("zepp_summary", None, overall_summary, db)
+
+    return {"filename": source_name, "metrics_extracted": len(report.daily_summaries()), "stored": stored}
