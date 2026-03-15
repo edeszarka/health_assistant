@@ -123,8 +123,7 @@ class RAGService:
         Returns:
             Formatted multi-section context string.
         """
-        from models.db_models import LabResult, BloodPressureReading, FamilyHistory, SamsungHealthMetric
-        from sqlalchemy import func
+        from models.db_models import LabResult, BloodPressureReading, FamilyHistory
 
         sections: list[str] = []
 

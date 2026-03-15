@@ -1,192 +1,133 @@
-"""Chat router: RAG-augmented LLM conversation with direct DB data injection."""
+"""Chat router: RAG-augmented LLM conversation."""
 from __future__ import annotations
 
-from datetime import date, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import select, func, desc
 
 from database.connection import get_db
 from models.api_models import ChatRequest, ChatResponse
-from models.db_models import UserProfile, SamsungHealthMetric, LabResult, BloodPressureReading, FamilyHistory
+from models.db_models import UserProfile, SamsungHealthMetric
 from services.rag_service import rag_service
 from services.llm_service import llm_service
 
 router = APIRouter()
 
-
 async def _build_health_metrics_summary(db: AsyncSession) -> str:
-    """
-    Directly query samsung_health_metrics and return a plain-text summary
-    that gets injected verbatim into the LLM system prompt.
-    Covers last 30 days + last 7 days highlight.
-    """
-    lines = []
-    today = date.today()
-    last_7  = today - timedelta(days=7)
-    last_30 = today - timedelta(days=30)
+    """Build a comprehensive 18-month summary of health metrics."""
+    today = datetime.now(timezone.utc)
+    last_18m = today - timedelta(days=548)
+    last_30d = today - timedelta(days=30)
+    last_7d = today - timedelta(days=7)
 
-    try:
-        # --- Steps: last 7 days ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
+    sections = []
+
+    # Steps - last 7 days detailed
+    stmt_7d = (
+        select(SamsungHealthMetric)
+        .where(SamsungHealthMetric.metric_type == "steps", SamsungHealthMetric.recorded_at >= last_7d)
+        .order_by(desc(SamsungHealthMetric.recorded_at))
+    )
+    res_7d = await db.execute(stmt_7d)
+    steps_7d = res_7d.scalars().all()
+    if steps_7d:
+        sections.append("=== Steps (Last 7 Days) ===")
+        for s in steps_7d:
+            sections.append(f"  {s.recorded_at.strftime('%Y-%m-%d')}: {int(s.value):,} steps")
+            
+    # Steps - 30-day average
+    stmt_30d_avg = (
+        select(func.avg(SamsungHealthMetric.value))
+        .where(SamsungHealthMetric.metric_type == "steps", SamsungHealthMetric.recorded_at >= last_30d)
+    )
+    res_30d_avg = await db.execute(stmt_30d_avg)
+    avg_30d = res_30d_avg.scalar()
+    if avg_30d:
+        sections.append(f"\n=== Steps (30-day Average) ===\n  {int(avg_30d):,} steps/day")
+
+    # Steps - top 10 days in last 18 months
+    stmt_top_10 = (
+        select(SamsungHealthMetric)
+        .where(SamsungHealthMetric.metric_type == "steps", SamsungHealthMetric.recorded_at >= last_18m)
+        .order_by(desc(SamsungHealthMetric.value))
+        .limit(10)
+    )
+    res_top_10 = await db.execute(stmt_top_10)
+    top_10 = res_top_10.scalars().all()
+    if top_10:
+        sections.append("\n=== Top 10 Step Days (Last 18 months) ===")
+        for s in top_10:
+            sections.append(f"  {s.recorded_at.strftime('%Y-%m-%d')}: {int(s.value):,} steps")
+
+    # Steps - monthly averages for last 18 months
+    stmt_monthly = (
+        select(
+            func.date_trunc('month', SamsungHealthMetric.recorded_at).label('month'),
+            func.avg(SamsungHealthMetric.value).label('avg_steps'),
+            func.count(SamsungHealthMetric.value).label('day_count')
         )
-        step_rows = result.scalars().all()
-        if step_rows:
-            lines.append("=== Steps (last 7 days) ===")
-            for row in step_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, 'date') else row.recorded_at
-                lines.append(f"  {d}: {int(row.value):,} steps")
-            avg_7 = sum(r.value for r in step_rows) / len(step_rows)
-            lines.append(f"  7-day average: {int(avg_7):,} steps/day")
+        .where(SamsungHealthMetric.metric_type == "steps", SamsungHealthMetric.recorded_at >= last_18m)
+        .group_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
+        .order_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
+    )
+    res_monthly = await db.execute(stmt_monthly)
+    monthly_data = res_monthly.all()
+    if monthly_data:
+        sections.append("\n=== Monthly Step Averages (last 18 months) ===")
+        for row in monthly_data:
+            if row.month and row.avg_steps is not None:
+                month_str = row.month.strftime("%Y-%m")
+                sections.append(f"  {month_str}: {int(row.avg_steps):,} avg steps/day ({row.day_count} days)")
 
-        # --- Steps: last 30 days average ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_30)
-        )
-        step_30 = result.scalars().all()
-        if step_30:
-            avg_30 = sum(r.value for r in step_30) / len(step_30)
-            max_30 = max(r.value for r in step_30)
-            max_day = max(step_30, key=lambda r: r.value)
-            max_date = max_day.recorded_at.date() if hasattr(max_day.recorded_at, 'date') else max_day.recorded_at
-            lines.append(f"  30-day average: {int(avg_30):,} steps/day")
-            lines.append(f"  30-day maximum: {int(max_30):,} steps (on {max_date})")
+    # Weight - latest entry (no change to window)
+    stmt_weight = (
+        select(SamsungHealthMetric)
+        .where(SamsungHealthMetric.metric_type == "weight_kg")
+        .order_by(desc(SamsungHealthMetric.recorded_at))
+        .limit(1)
+    )
+    weight = (await db.execute(stmt_weight)).scalar_one_or_none()
+    if weight:
+        sections.append(f"\n=== Current Weight ===\n  {weight.value:.1f} kg (on {weight.recorded_at.strftime('%Y-%m-%d')})")
+        
+    # Resting HR: 18 months window (latest, 30d avg, overall avg)
+    stmt_hr = (
+        select(SamsungHealthMetric)
+        .where(SamsungHealthMetric.metric_type == "resting_heart_rate", SamsungHealthMetric.recorded_at >= last_18m)
+        .order_by(desc(SamsungHealthMetric.recorded_at))
+    )
+    hr_latest = (await db.execute(stmt_hr.limit(1))).scalar_one_or_none()
+    if hr_latest:
+        hr_30d_avg = (await db.execute(select(func.avg(SamsungHealthMetric.value)).where(SamsungHealthMetric.metric_type == "resting_heart_rate", SamsungHealthMetric.recorded_at >= last_30d))).scalar() or 0
+        hr_all_avg = (await db.execute(select(func.avg(SamsungHealthMetric.value)).where(SamsungHealthMetric.metric_type == "resting_heart_rate", SamsungHealthMetric.recorded_at >= last_18m))).scalar() or 0
+        sections.append(f"\n=== Resting Heart Rate (Last 18 months) ===")
+        sections.append(f"  Latest: {int(hr_latest.value)} bpm (on {hr_latest.recorded_at.strftime('%Y-%m-%d')})")
+        sections.append(f"  30-day Avg: {int(hr_30d_avg)} bpm")
+        sections.append(f"  18-month Avg: {int(hr_all_avg)} bpm")
 
-        # --- Resting heart rate: last 30 days ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "resting_hr")
-            .where(SamsungHealthMetric.recorded_at >= last_30)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-        )
-        hr_rows = result.scalars().all()
-        if hr_rows:
-            lines.append("\n=== Resting Heart Rate (last 30 days) ===")
-            avg_hr = sum(r.value for r in hr_rows) / len(hr_rows)
-            latest_hr = hr_rows[0]
-            latest_hr_date = latest_hr.recorded_at.date() if hasattr(latest_hr.recorded_at, 'date') else latest_hr.recorded_at
-            lines.append(f"  Latest: {int(latest_hr.value)} bpm (on {latest_hr_date})")
-            lines.append(f"  30-day average: {avg_hr:.1f} bpm")
+    # Sleep - 30 days window for avg
+    stmt_sleep_30d = (
+        select(func.avg(SamsungHealthMetric.value))
+        .where(SamsungHealthMetric.metric_type == "sleep", SamsungHealthMetric.recorded_at >= last_30d)
+    )
+    sleep_avg = (await db.execute(stmt_sleep_30d)).scalar()
+    if sleep_avg:
+        sections.append(f"\n=== Sleep (30-day Average) ===\n  {sleep_avg:.1f} mins/night")
 
-        # --- Sleep: last 7 days ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "sleep_total_min")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-        )
-        sleep_rows = result.scalars().all()
-        if sleep_rows:
-            lines.append("\n=== Sleep (last 7 days) ===")
-            for row in sleep_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, 'date') else row.recorded_at
-                hours = row.value / 60
-                lines.append(f"  {d}: {hours:.1f} hours")
-            avg_sleep = sum(r.value for r in sleep_rows) / len(sleep_rows) / 60
-            lines.append(f"  7-day average: {avg_sleep:.1f} hours/night")
+    # Active calories - 30 days window for avg
+    stmt_cal_30d = (
+        select(func.avg(SamsungHealthMetric.value))
+        .where(SamsungHealthMetric.metric_type == "active_calories", SamsungHealthMetric.recorded_at >= last_30d)
+    )
+    cal_avg = (await db.execute(stmt_cal_30d)).scalar()
+    if cal_avg:
+        sections.append(f"\n=== Active Calories (30-day Average) ===\n  {int(cal_avg):,} kcal/day")
 
-        # --- Weight: latest entry ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "weight_kg")
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-            .limit(1)
-        )
-        weight = result.scalar_one_or_none()
-        if weight:
-            lines.append(f"\n=== Weight ===")
-            lines.append(f"  Latest: {weight.value} kg")
+    return "\n".join(sections)
 
-        # --- Active calories: last 7 days ---
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "active_calories")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-        )
-        cal_rows = result.scalars().all()
-        if cal_rows:
-            avg_cal = sum(r.value for r in cal_rows) / len(cal_rows)
-            lines.append(f"\n=== Active Calories (last 7 days avg) ===")
-            lines.append(f"  Average: {int(avg_cal)} kcal/day")
-
-    except Exception as e:
-        lines.append(f"(Error fetching Samsung metrics: {e})")
-
-    if not lines:
-        return "No Samsung Health data available."
-
-    return "\n".join(lines)
-
-
-async def _build_lab_flags_summary(db: AsyncSession) -> str:
-    """Fetch recent out-of-range lab results."""
-    try:
-        result = await db.execute(
-            select(LabResult)
-            .where(LabResult.is_flagged == True)
-            .order_by(LabResult.test_date.desc())
-            .limit(10)
-        )
-        flagged = result.scalars().all()
-        if not flagged:
-            return "No flagged lab values on record."
-        lines = []
-        for r in flagged:
-            direction = "HIGH ↑" if r.flag_direction == "high" else "LOW ↓"
-            lines.append(
-                f"  {r.test_date}: {r.raw_name} = {r.value} {r.unit} "
-                f"(ref: {r.ref_range_low}–{r.ref_range_high}) [{direction}]"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        return f"(Error fetching lab flags: {e})"
-
-
-async def _build_bp_summary(db: AsyncSession) -> str:
-    """Fetch 30-day blood pressure average."""
-    try:
-        last_30 = date.today() - timedelta(days=30)
-        result = await db.execute(
-            select(BloodPressureReading)
-            .where(BloodPressureReading.measured_at >= last_30)
-            .order_by(BloodPressureReading.measured_at.desc())
-        )
-        readings = result.scalars().all()
-        if not readings:
-            return "No blood pressure readings in last 30 days."
-        avg_sys = sum(r.systolic for r in readings) / len(readings)
-        avg_dia = sum(r.diastolic for r in readings) / len(readings)
-        avg_pulse = sum(r.pulse for r in readings) / len(readings)
-        latest = readings[0]
-        return (
-            f"Latest: {latest.systolic}/{latest.diastolic} mmHg, pulse {latest.pulse} bpm\n"
-            f"30-day average: {avg_sys:.0f}/{avg_dia:.0f} mmHg, pulse {avg_pulse:.0f} bpm "
-            f"({len(readings)} readings)"
-        )
-    except Exception as e:
-        return f"(Error fetching BP data: {e})"
-
-
-async def _build_family_history_summary(db: AsyncSession) -> str:
-    """Fetch all family history entries."""
-    try:
-        result = await db.execute(select(FamilyHistory))
-        entries = result.scalars().all()
-        if not entries:
-            return "No family history recorded."
-        lines = [f"  {e.relation}: {e.condition}" +
-                 (f" (onset age {e.age_of_onset})" if e.age_of_onset else "")
-                 for e in entries]
-        return "\n".join(lines)
-    except Exception as e:
-        return f"(Error fetching family history: {e})"
 
 
 @router.post("/", response_model=ChatResponse)
@@ -194,39 +135,38 @@ async def chat(
     request: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
-    """Accept a user message, build full context from DB, return LLM reply."""
+    """Accept a user message, build RAG context, return LLM reply.
 
-    # 1. Fetch user profile
+    Args:
+        request: ChatRequest with message and conversation history.
+        db: Async DB session.
+
+    Returns:
+        ChatResponse with reply and source list.
+    """
+    # Fetch user profile (first row, if exists)
     try:
         result = await db.execute(select(UserProfile).limit(1))
         profile = result.scalar_one_or_none()
     except Exception:
         profile = None
 
-    # 2. Build all context sections directly from DB
-    metrics_summary   = await _build_health_metrics_summary(db)
-    lab_flags_summary = await _build_lab_flags_summary(db)
-    bp_summary        = await _build_bp_summary(db)
-    family_summary    = await _build_family_history_summary(db)
-
-    # 3. RAG similarity search for additional context
+    # Build RAG context
     try:
-        rag_context = await rag_service.build_context(request.message, profile, db)
-    except Exception:
-        rag_context = ""
+        context = await rag_service.build_context(request.message, profile, db)
+        health_summary = await _build_health_metrics_summary(db)
+        if health_summary:
+            context += f"\n\n{health_summary}"
+    except Exception as exc:
+        context = ""
 
-    # 4. Call LLM with all context filled in
+    # Call LLM
     try:
         reply = await llm_service.chat(
             message=request.message,
             conversation_history=request.conversation_history,
-            context=rag_context,
+            context=context,
             user_profile=profile,
-            query_type=getattr(request, "query_type", "general"),
-            health_metrics_summary=metrics_summary,
-            flagged_values=lab_flags_summary,
-            bp_summary=bp_summary,
-            family_history_summary=family_summary,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")
