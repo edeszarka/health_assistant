@@ -1,4 +1,4 @@
-version: "3.9"
+# version: "3.9"
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -22,14 +22,38 @@ services:
       - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
+    healthcheck:
+      test: [ "CMD-SHELL", "ollama list || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  ollama-pull:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        ollama pull llama3.1:8b
+        ollama pull nomic-embed-text
+    restart: "no"
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+asyncpg://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant
       SYNC_DATABASE_URL: postgresql+psycopg2://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant

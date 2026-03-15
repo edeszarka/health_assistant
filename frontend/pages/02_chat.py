@@ -31,7 +31,7 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
             try:
-                with httpx.Client(timeout=120.0) as client:
+                with httpx.Client(timeout=1200.0) as client:
                     resp = client.post(
                         f"{BACKEND}/chat/",
                         json={"message": prompt, "conversation_history": history},
@@ -40,6 +40,13 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
                     data = resp.json()
                     reply = data.get("reply", "Sorry, I could not generate a response.")
                     sources = data.get("sources", [])
+            except httpx.HTTPStatusError as e:
+                try:
+                    detail = e.response.json().get("detail", e.response.text)
+                except Exception:
+                    detail = e.response.text
+                reply = f"❌ Backend error: {detail}"
+                sources = []
             except Exception as e:
                 reply = f"❌ Backend error: {e}"
                 sources = []

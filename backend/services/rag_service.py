@@ -7,8 +7,8 @@ import httpx
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.config import settings
-from backend.models.db_models import Embedding
+from config import settings
+from models.db_models import Embedding
 
 
 class RAGService:
@@ -30,7 +30,7 @@ class RAGService:
             768-dimensional float list.
         """
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=1020.0) as client:
                 resp = await client.post(
                     self._embed_url,
                     json={"model": self._embed_model, "prompt": text_content},
@@ -123,7 +123,8 @@ class RAGService:
         Returns:
             Formatted multi-section context string.
         """
-        from backend.models.db_models import LabResult, BloodPressureReading, FamilyHistory
+        from models.db_models import LabResult, BloodPressureReading, FamilyHistory, SamsungHealthMetric
+        from sqlalchemy import func
 
         sections: list[str] = []
 
@@ -182,6 +183,73 @@ class RAGService:
                 for fh in family:
                     onset = f", onset age {fh.age_of_onset}" if fh.age_of_onset else ""
                     sections.append(f"- {fh.relation}: {fh.condition}{onset}")
+        except Exception:
+            pass
+
+        # 5. Samsung / Zepp Health Metrics
+        try:
+            # First, fetch latest weight and BMI (absolute latest)
+            stmt = (
+                select(SamsungHealthMetric)
+                .where(SamsungHealthMetric.metric_type.in_(["weight_kg", "bmi"]))
+                .order_by(SamsungHealthMetric.recorded_at.desc())
+                .limit(2)
+            )
+            result = await db.execute(stmt)
+            latest_w_bmi = result.scalars().all()
+            if latest_w_bmi:
+                sections.append("\n=== Latest Weight & BMI ===")
+                for m in latest_w_bmi:
+                    label = "Weight" if m.metric_type == "weight_kg" else "BMI"
+                    unit = "kg" if m.metric_type == "weight_kg" else ""
+                    date_str = m.recorded_at.strftime("%Y-%m-%d")
+                    sections.append(f"- {label}: {m.value:.1f}{unit} (recorded {date_str})")
+
+            # Then, fetch summaries for the most recent 7 days of activity
+            # Get the distinct dates for the 7 most recent days with any data
+            stmt = (
+                select(func.date(SamsungHealthMetric.recorded_at))
+                .distinct()
+                .order_by(func.date(SamsungHealthMetric.recorded_at).desc())
+                .limit(7)
+            )
+            result = await db.execute(stmt)
+            recent_dates = [row[0] for row in result.fetchall()]
+
+            if recent_dates:
+                sections.append("\n=== Recent Activity Metrics ===")
+                for d in sorted(recent_dates, reverse=True):
+                    # Fetch all metrics for this date
+                    stmt = select(SamsungHealthMetric).where(
+                        func.date(SamsungHealthMetric.recorded_at) == d
+                    )
+                    result = await db.execute(stmt)
+                    metrics = result.scalars().all()
+                    
+                    m_list = []
+                    # Filter and format key metrics to keep context concise
+                    display_order = [
+                        "steps", "active_time_min", "active_calories", "resting_hr", 
+                        "avg_spo2", "sleep_total_min", "avg_stress"
+                    ]
+                    m_dict = {m.metric_type: m.value for m in metrics}
+                    
+                    for key in display_order:
+                        if key in m_dict:
+                            val = m_dict[key]
+                            label = key.replace("_", " ").title()
+                            if "min" in key:
+                                m_list.append(f"{label}: {int(val)}m")
+                            elif "steps" in key:
+                                m_list.append(f"{label}: {int(val)}")
+                            elif "hr" in key or "spo2" in key or "stress" in key:
+                                m_list.append(f"{label}: {val:.1f}")
+                            else:
+                                m_list.append(f"{label}: {val:.1f}")
+                    
+                    if m_list:
+                        sections.append(f"- {d}: {', '.join(m_list)}")
+
         except Exception:
             pass
 
