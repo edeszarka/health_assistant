@@ -59,6 +59,45 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
             lines.append(f"  30-day average: {int(avg_30):,} steps/day")
             lines.append(f"  30-day maximum: {int(max_30):,} steps (on {max_date})")
 
+        # --- Steps: top 10 days in last 18 months ---
+        last_18m = today - timedelta(days=548)
+        result = await db.execute(
+            select(SamsungHealthMetric)
+            .where(SamsungHealthMetric.metric_type == "steps")
+            .where(SamsungHealthMetric.recorded_at >= last_18m)
+            .order_by(SamsungHealthMetric.value.desc())
+            .limit(10)
+        )
+        top_step_rows = result.scalars().all()
+        if top_step_rows:
+            lines.append("\n=== Top 10 Step Days (last 18 months) ===")
+            for row in top_step_rows:
+                d = row.recorded_at.date() if hasattr(row.recorded_at, 'date') else row.recorded_at
+                lines.append(f"  {d}: {int(row.value):,} steps")
+
+        # --- Steps: monthly averages for last 18 months ---
+        result = await db.execute(
+            select(
+                func.date_trunc('month', SamsungHealthMetric.recorded_at).label('month'),
+                func.avg(SamsungHealthMetric.value).label('avg_steps'),
+                func.max(SamsungHealthMetric.value).label('max_steps'),
+                func.count(SamsungHealthMetric.value).label('day_count'),
+            )
+            .where(SamsungHealthMetric.metric_type == "steps")
+            .where(SamsungHealthMetric.recorded_at >= last_18m)
+            .group_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
+            .order_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
+        )
+        monthly_rows = result.all()
+        if monthly_rows:
+            lines.append("\n=== Monthly Step Averages (last 18 months) ===")
+            for row in monthly_rows:
+                month_str = row.month.strftime("%Y-%m") if hasattr(row.month, 'strftime') else str(row.month)[:7]
+                lines.append(
+                    f"  {month_str}: {int(row.avg_steps):,} avg steps/day "
+                    f"(best day: {int(row.max_steps):,}, data from {row.day_count} days)"
+                )
+
         # --- Resting heart rate: last 30 days ---
         result = await db.execute(
             select(SamsungHealthMetric)
