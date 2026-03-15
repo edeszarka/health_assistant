@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.services.risk_engine import RiskEngine
+from services.risk_engine import RiskEngine
 
 
 @pytest.fixture

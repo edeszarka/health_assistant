@@ -8,13 +8,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.config import settings
-from backend.ingestion.pdf_parser import PDFParser
-from backend.ingestion.lab_normalizer import LabNormalizer
-from backend.ingestion.samsung_parser import SamsungHealthParser
-from backend.models.db_models import LabResult, SamsungHealthMetric
-from backend.services.rag_service import rag_service
+from database.connection import get_db
+from config import settings
+from ingestion.pdf_parser import PDFParser
+from ingestion.lab_normalizer import LabNormalizer
+from ingestion.samsung_parser import SamsungHealthParser
+from models.db_models import LabResult, SamsungHealthMetric
+from services.rag_service import rag_service
 
 router = APIRouter()
 pdf_parser = PDFParser()

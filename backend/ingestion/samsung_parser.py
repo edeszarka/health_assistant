@@ -4,10 +4,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,17 +38,20 @@ class SamsungHealthParser:
         results: list[SamsungMetricRaw] = []
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
+                logger.info(f"ZIP contents: {zf.namelist()}")
                 for name in zf.namelist():
-                    lower = name.lower()
+                    basename = name.split("/")[-1].lower()
+                    if not basename.endswith(".csv") and not basename.endswith(".json"):
+                        continue
                     with zf.open(name) as f:
                         content = f.read()
-                    if "step_daily_trend" in lower:
+                    if "step_daily_trend" in basename:
                         results.extend(self._parse_steps(content, name))
-                    elif "sleep" in lower:
+                    elif "sleep" in basename:
                         results.extend(self._parse_sleep(content, name))
-                    elif "heart_rate" in lower:
+                    elif "heart_rate" in basename:
                         results.extend(self._parse_heart_rate(content, name))
-                    elif "body" in lower:
+                    elif "body" in basename:
                         results.extend(self._parse_body(content, name))
         except Exception as exc:
             raise RuntimeError(f"Failed to parse Samsung Health ZIP: {exc}") from exc
@@ -64,17 +70,20 @@ class SamsungHealthParser:
         results: list[SamsungMetricRaw] = []
         try:
             with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+                logger.info(f"ZIP contents: {zf.namelist()}")
                 for name in zf.namelist():
-                    lower = name.lower()
+                    basename = name.split("/")[-1].lower()
+                    if not basename.endswith(".csv") and not basename.endswith(".json"):
+                        continue
                     with zf.open(name) as f:
                         file_content = f.read()
-                    if "step_daily_trend" in lower:
+                    if "step_daily_trend" in basename:
                         results.extend(self._parse_steps(file_content, name))
-                    elif "sleep" in lower:
+                    elif "sleep" in basename:
                         results.extend(self._parse_sleep(file_content, name))
-                    elif "heart_rate" in lower:
+                    elif "heart_rate" in basename:
                         results.extend(self._parse_heart_rate(file_content, name))
-                    elif "body" in lower:
+                    elif "body" in basename:
                         results.extend(self._parse_body(file_content, name))
         except Exception as exc:
             raise RuntimeError(f"Failed to parse Samsung Health ZIP bytes: {exc}") from exc

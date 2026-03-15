@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.connection import get_db
-from backend.models.api_models import (
+from database.connection import get_db
+from models.api_models import (
     BloodPressureCreate,
     BloodPressureResponse,
     BPSummaryResponse,
 )
-from backend.models.db_models import BloodPressureReading, RiskScore
-from backend.services.risk_engine import risk_engine
+from models.db_models import BloodPressureReading, RiskScore
+from services.risk_engine import risk_engine
 
 router = APIRouter()
 

@@ -1,6 +1,6 @@
 from sqlalchemy import select
-from backend.database.connection import SessionLocal
-from backend.models.db_models import FamilyHistory
+from database.connection import SessionLocal
+from models.db_models import FamilyHistory
 
 class FamilyHistoryService:
     async def add_entry(self, user_id: int, relative: str, condition: str, age: int = None):

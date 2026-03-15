@@ -7,8 +7,8 @@ import httpx
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.config import settings
-from backend.models.db_models import Embedding
+from config import settings
+from models.db_models import Embedding
 
 
 class RAGService:
@@ -123,7 +123,7 @@ class RAGService:
         Returns:
             Formatted multi-section context string.
         """
-        from backend.models.db_models import LabResult, BloodPressureReading, FamilyHistory
+        from models.db_models import LabResult, BloodPressureReading, FamilyHistory
 
         sections: list[str] = []
 

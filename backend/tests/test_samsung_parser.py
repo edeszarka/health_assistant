@@ -7,7 +7,7 @@ import zipfile
 
 import pytest
 
-from backend.ingestion.samsung_parser import SamsungHealthParser
+from ingestion.samsung_parser import SamsungHealthParser
 
 
 def _make_zip(filenames_and_contents: dict[str, bytes]) -> bytes:

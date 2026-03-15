@@ -8,8 +8,8 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models.api_models import ScreeningRecommendation
-from backend.services.medlineplus_service import medlineplus_service
+from models.api_models import ScreeningRecommendation
+from services.medlineplus_service import medlineplus_service
 
 
 # Rules: (condition, min_age, max_age, sex_filter, family_history_trigger, urgency, specialist)

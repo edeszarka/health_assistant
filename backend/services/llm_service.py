@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import httpx
 
-from backend.config import settings
+from config import settings
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are a knowledgeable personal health assistant. Help the user understand their lab results,
