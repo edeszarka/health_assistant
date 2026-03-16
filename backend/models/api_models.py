@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 # ─── Lab Results ────────────────────────────────────────────────────────────
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 class LabResultResponse(BaseModel):
     """Single lab result returned by the API."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = {"from_attributes": True}
 
     id: int
     test_name: str
@@ -105,7 +105,6 @@ class ChatRequest(BaseModel):
 
     message: str
     conversation_history: List[dict] = []
-    query_type: str = "general"
 
 
 class ChatResponse(BaseModel):
