@@ -76,17 +76,18 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
                 lines.append(f"  {d}: {int(row.value):,} steps")
 
         # --- Steps: monthly averages for last 18 months ---
+        month_col = func.date_trunc('month', SamsungHealthMetric.recorded_at)
         result = await db.execute(
             select(
-                func.date_trunc('month', SamsungHealthMetric.recorded_at).label('month'),
+                month_col.label('month'),
                 func.avg(SamsungHealthMetric.value).label('avg_steps'),
                 func.max(SamsungHealthMetric.value).label('max_steps'),
                 func.count(SamsungHealthMetric.value).label('day_count'),
             )
             .where(SamsungHealthMetric.metric_type == "steps")
             .where(SamsungHealthMetric.recorded_at >= last_18m)
-            .group_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
-            .order_by(func.date_trunc('month', SamsungHealthMetric.recorded_at))
+            .group_by(month_col)
+            .order_by(month_col)
         )
         monthly_rows = result.all()
         if monthly_rows:
