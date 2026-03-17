@@ -15,6 +15,7 @@ from config import settings
 from ingestion.pdf_parser import PDFParser
 from ingestion.lab_normalizer import LabNormalizer
 from ingestion.samsung_parser import SamsungHealthParser
+from ingestion.zepp_parser import ZeppParser
 from models.db_models import LabResult, SamsungHealthMetric
 from services.rag_service import rag_service
 

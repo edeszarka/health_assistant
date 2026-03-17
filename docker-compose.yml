@@ -41,7 +41,7 @@ services:
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
-        ollama pull llama3.1:8b
+        ollama pull ${OLLAMA_MODEL:-llama3.1:8b}
         ollama pull nomic-embed-text
     restart: "no"
 
