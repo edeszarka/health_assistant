@@ -1,6 +1,6 @@
 # 🏥 Health Assistant
 
-> **A local-first personal health intelligence assistant powered by Llama 3.1, PostgreSQL/pgvector, and Streamlit.**
+> **A local-first personal health intelligence assistant powered by Qwen 3, PostgreSQL/pgvector, and Streamlit.**
 
 > ⚠️ **Disclaimer**: This software is for **informational purposes only**. It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional.
 
@@ -19,10 +19,10 @@
 │  └──────────────┘     └────────┬─────────┘     └────────────────┘  │
 │                                │                                    │
 │                                ▼                                    │
-│                       ┌────────────────┐                           │
-│                       │  Ollama        │                           │
-│                       │  llama3.1:8b   │                           │
-│                       │  nomic-embed   │                           │
+│                       ┌────────────────┐      ┌────────────────┐   │
+│                       │  Ollama        │◀─────│  Ollama-Pull   │   │
+│                       │  qwen3:4b      │      │  (Auto-setup)  │   │
+│                       │  nomic-embed   │      └────────────────┘   │
 │                       │  :11434        │                           │
 │                       └────────────────┘                           │
 └─────────────────────────────────────────────────────────────────────┘
@@ -41,7 +41,8 @@
 - 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); LLM extracts and normalises lab values
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
-- 📱 **Samsung Health Import** – Parse ZIP exports for steps, sleep, heart rate, and body metrics
+- 📱 **Samsung Health Import** – Parse ZIP exports for steps, sleep, heart rate, and body metrics (handles subfolder exports)
+- ⌚ **Zepp Life Import** – Support for Zepp Life ZIP data (includes AES-encrypted file support)
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
@@ -71,13 +72,11 @@ cp .env.example .env
 # Edit .env and set a secure POSTGRES_PASSWORD
 
 # 3. Start everything
+# This will automatically pull the AI models (qwen3:4b, nomic-embed-text)
 docker-compose up -d
 
-# 4. Pull the AI models (first run only, ~5 GB)
-docker-compose exec ollama ollama pull llama3.1:8b
-docker-compose exec ollama ollama pull nomic-embed-text
-
-# 5. Open the app
+# 4. Open the app
+# (Wait a minute on first run for models to download)
 start http://localhost:8501   # Frontend (Windows)
 # open http://localhost:8501  # macOS/Linux
 ```
@@ -111,6 +110,17 @@ API docs available at: **http://localhost:8000/docs**
 3. The assistant uses your actual lab values, BP history, and family history
 4. All responses end with a reminder to consult your doctor
 
+### View Recommendations
+1. Go to **📋 Recommendations**
+2. See a personalized checklist of health screenings based on your profile and data
+3. Click on conditions to see detailed info from MedlinePlus
+
+### Import Samsung or Zepp Life Data
+1. Go to **📂 Upload**
+2. Select the "Samsung Health" or "Zepp Life" tab
+3. Upload your ZIP export
+4. For Zepp Life, enter the export password if requested
+
 ---
 
 ## Data Privacy
@@ -132,13 +142,13 @@ API docs available at: **http://localhost:8000/docs**
 | Component | Technology |
 |---|---|
 | Backend | FastAPI 0.110+, Python 3.12, Pydantic v2 |
-| Frontend | Streamlit |
+| Frontend | Streamlit, Pandas, Plotly |
 | Database | PostgreSQL 16 + pgvector extension |
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
-| LLM | Ollama — llama3.1:8b |
+| LLM | Ollama — qwen3:4b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
 | Orchestration | LangChain, langchain-ollama |
-| PDF Parsing | pdfplumber |
+| Parsing | pdfplumber, pyzipper |
 | External API | MedlinePlus Web Service (NIH, no key) |
 | Testing | pytest, pytest-asyncio, httpx |
 | Containers | Docker + Docker Compose |
