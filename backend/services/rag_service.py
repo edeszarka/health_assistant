@@ -1,4 +1,5 @@
 """LangChain + Ollama RAG service with pgvector similarity search."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -149,9 +150,7 @@ class RAGService:
                     ref = ""
                     if lab.ref_range_low is not None and lab.ref_range_high is not None:
                         ref = f" (ref: {lab.ref_range_low}–{lab.ref_range_high} {lab.unit})"
-                    sections.append(
-                        f"- {lab.test_name}: {lab.value} {lab.unit}{ref} ⚠️"
-                    )
+                    sections.append(f"- {lab.test_name}: {lab.value} {lab.unit}{ref} ⚠️")
         except Exception:
             pass
 
@@ -202,7 +201,9 @@ class RAGService:
                     label = "Weight" if m.metric_type == "weight_kg" else "BMI"
                     unit = "kg" if m.metric_type == "weight_kg" else ""
                     date_str = m.recorded_at.strftime("%Y-%m-%d")
-                    sections.append(f"- {label}: {m.value:.1f}{unit} (recorded {date_str})")
+                    sections.append(
+                        f"- {label}: {m.value:.1f}{unit} (recorded {date_str})"
+                    )
 
             # Then, fetch summaries for the most recent 7 days of activity
             # Get the distinct dates for the 7 most recent days with any data
@@ -224,15 +225,20 @@ class RAGService:
                     )
                     result = await db.execute(stmt)
                     metrics = result.scalars().all()
-                    
+
                     m_list = []
                     # Filter and format key metrics to keep context concise
                     display_order = [
-                        "steps", "active_time_min", "active_calories", "resting_hr", 
-                        "avg_spo2", "sleep_total_min", "avg_stress"
+                        "steps",
+                        "active_time_min",
+                        "active_calories",
+                        "resting_hr",
+                        "avg_spo2",
+                        "sleep_total_min",
+                        "avg_stress",
                     ]
                     m_dict = {m.metric_type: m.value for m in metrics}
-                    
+
                     for key in display_order:
                         if key in m_dict:
                             val = m_dict[key]
@@ -245,7 +251,7 @@ class RAGService:
                                 m_list.append(f"{label}: {val:.1f}")
                             else:
                                 m_list.append(f"{label}: {val:.1f}")
-                    
+
                     if m_list:
                         sections.append(f"- {d}: {', '.join(m_list)}")
 

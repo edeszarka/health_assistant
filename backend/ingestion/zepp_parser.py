@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Known gap: band not worn between these dates (inclusive)
 DEFAULT_GAP_START = date(2024, 2, 1)
-DEFAULT_GAP_END   = date(2025, 2, 1)
+DEFAULT_GAP_END = date(2025, 2, 1)
 
 # Mi Band 5 resting heart rate plausible range
 HR_MIN_PLAUSIBLE = 30
@@ -64,16 +64,16 @@ SPO2_MIN_PLAUSIBLE = 70
 SPO2_MAX_PLAUSIBLE = 100
 
 # Sleep stage codes used in Zepp export
-SLEEP_STAGE_DEEP    = 4   # deep sleep (NREM3)
-SLEEP_STAGE_LIGHT   = 1   # light sleep (NREM1/2)
-SLEEP_STAGE_REM     = 5   # REM sleep
-SLEEP_STAGE_AWAKE   = 6   # awake during night
+SLEEP_STAGE_DEEP = 4  # deep sleep (NREM3)
+SLEEP_STAGE_LIGHT = 1  # light sleep (NREM1/2)
+SLEEP_STAGE_REM = 5  # REM sleep
+SLEEP_STAGE_AWAKE = 6  # awake during night
 SLEEP_STAGE_UNKNOWN = 0
 
 # Stress categories
-STRESS_LOW      = (0, 25)
+STRESS_LOW = (0, 25)
 STRESS_MODERATE = (25, 50)
-STRESS_HIGH     = (50, 75)
+STRESS_HIGH = (50, 75)
 STRESS_VERY_HIGH = (75, 100)
 
 
@@ -81,16 +81,17 @@ STRESS_VERY_HIGH = (75, 100)
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class HeartRateReading:
     timestamp: datetime
     bpm: int
-    is_resting: bool = False      # True if measured during low-activity period
+    is_resting: bool = False  # True if measured during low-activity period
 
 
 @dataclass
 class SleepSession:
-    date: date                    # night date (the date the person went to bed)
+    date: date  # night date (the date the person went to bed)
     start: datetime
     end: datetime
     total_minutes: int
@@ -98,7 +99,7 @@ class SleepSession:
     light_minutes: int
     rem_minutes: int
     awake_minutes: int
-    efficiency: Optional[float]   # 0-100%, None if unavailable
+    efficiency: Optional[float]  # 0-100%, None if unavailable
 
     @property
     def duration_hours(self) -> float:
@@ -125,7 +126,7 @@ class ActivityDay:
     steps: int
     distance_meters: float
     calories: int
-    active_minutes: int           # minutes with activity level >= 3
+    active_minutes: int  # minutes with activity level >= 3
 
 
 @dataclass
@@ -133,7 +134,7 @@ class WorkoutSession:
     date: date
     start: datetime
     end: datetime
-    sport_type: str               # "running", "walking", "cycling", etc.
+    sport_type: str  # "running", "walking", "cycling", etc.
     duration_minutes: int
     calories: int
     distance_meters: float
@@ -151,7 +152,7 @@ class SpO2Reading:
 @dataclass
 class StressReading:
     timestamp: datetime
-    stress_score: int             # 0-100
+    stress_score: int  # 0-100
 
 
 @dataclass
@@ -164,6 +165,7 @@ class WeightEntry:
 @dataclass
 class DataGap:
     """Represents a period where the band was not worn."""
+
     start: date
     end: date
     reason: str
@@ -176,16 +178,17 @@ class DataGap:
 @dataclass
 class ZeppReport:
     """Full parsed result from a Zepp Life export."""
-    heart_rate: list[HeartRateReading]   = field(default_factory=list)
-    sleep:      list[SleepSession]       = field(default_factory=list)
-    activity:   list[ActivityDay]        = field(default_factory=list)
-    workouts:   list[WorkoutSession]     = field(default_factory=list)
-    spo2:       list[SpO2Reading]        = field(default_factory=list)
-    stress:     list[StressReading]      = field(default_factory=list)
-    weight:     list[WeightEntry]        = field(default_factory=list)
-    gaps:       list[DataGap]            = field(default_factory=list)
-    parse_errors: list[str]             = field(default_factory=list)
-    files_found:  list[str]             = field(default_factory=list)
+
+    heart_rate: list[HeartRateReading] = field(default_factory=list)
+    sleep: list[SleepSession] = field(default_factory=list)
+    activity: list[ActivityDay] = field(default_factory=list)
+    workouts: list[WorkoutSession] = field(default_factory=list)
+    spo2: list[SpO2Reading] = field(default_factory=list)
+    stress: list[StressReading] = field(default_factory=list)
+    weight: list[WeightEntry] = field(default_factory=list)
+    gaps: list[DataGap] = field(default_factory=list)
+    parse_errors: list[str] = field(default_factory=list)
+    files_found: list[str] = field(default_factory=list)
 
     def date_range(self) -> tuple[Optional[date], Optional[date]]:
         """Earliest and latest dates across all data types."""
@@ -214,7 +217,7 @@ class ZeppReport:
                 by_day.setdefault(d, []).append(r.bpm)
         result = []
         for d in sorted(by_day):
-            if len(by_day[d]) >= 3:     # need at least 3 readings for reliability
+            if len(by_day[d]) >= 3:  # need at least 3 readings for reliability
                 result.append((d, round(median(by_day[d]), 1)))
         return result
 
@@ -231,8 +234,7 @@ class ZeppReport:
         """Average sleep duration in hours over recent N days (excluding gaps)."""
         cutoff = date.today() - timedelta(days=days)
         sessions = [
-            s for s in self.sleep
-            if s.date >= cutoff and not _in_gap(s.date, self.gaps)
+            s for s in self.sleep if s.date >= cutoff and not _in_gap(s.date, self.gaps)
         ]
         if not sessions:
             return None
@@ -242,7 +244,8 @@ class ZeppReport:
         """Average daily steps over recent N days (excluding gaps)."""
         cutoff = date.today() - timedelta(days=days)
         days_data = [
-            a for a in self.activity
+            a
+            for a in self.activity
             if a.date >= cutoff and not _in_gap(a.date, self.gaps)
         ]
         if not days_data:
@@ -253,8 +256,10 @@ class ZeppReport:
         """Average SpO2 % over recent N days."""
         cutoff = date.today() - timedelta(days=days)
         readings = [
-            r for r in self.spo2
-            if r.timestamp.date() >= cutoff and not _in_gap(r.timestamp.date(), self.gaps)
+            r
+            for r in self.spo2
+            if r.timestamp.date() >= cutoff
+            and not _in_gap(r.timestamp.date(), self.gaps)
         ]
         if not readings:
             return None
@@ -280,33 +285,47 @@ class ZeppReport:
             all_dates.add(a.date)
 
         activity_by_date = {a.date: a for a in self.activity}
-        sleep_by_date    = {s.date: s for s in self.sleep}
+        sleep_by_date = {s.date: s for s in self.sleep}
 
         summaries = []
         for d in sorted(all_dates):
             in_gap = _in_gap(d, self.gaps)
-            hr_readings = [r.bpm for r in self.heart_rate if r.timestamp.date() == d and r.bpm <= 80]
+            hr_readings = [
+                r.bpm
+                for r in self.heart_rate
+                if r.timestamp.date() == d and r.bpm <= 80
+            ]
             spo2_readings = [r.spo2_pct for r in self.spo2 if r.timestamp.date() == d]
-            stress_readings = [r.stress_score for r in self.stress if r.timestamp.date() == d]
+            stress_readings = [
+                r.stress_score for r in self.stress if r.timestamp.date() == d
+            ]
             act = activity_by_date.get(d)
             slp = sleep_by_date.get(d)
 
-            summaries.append({
-                "date": d.isoformat(),
-                "in_gap": in_gap,
-                "resting_hr": round(median(hr_readings), 1) if hr_readings else None,
-                "steps": act.steps if act else None,
-                "distance_m": act.distance_meters if act else None,
-                "calories": act.calories if act else None,
-                "active_minutes": act.active_minutes if act else None,
-                "sleep_total_min": slp.total_minutes if slp else None,
-                "sleep_deep_min":  slp.deep_minutes if slp else None,
-                "sleep_light_min": slp.light_minutes if slp else None,
-                "sleep_rem_min":   slp.rem_minutes if slp else None,
-                "sleep_quality":   slp.sleep_quality if slp else None,
-                "avg_spo2": round(mean(spo2_readings), 1) if spo2_readings else None,
-                "avg_stress": round(mean(stress_readings), 1) if stress_readings else None,
-            })
+            summaries.append(
+                {
+                    "date": d.isoformat(),
+                    "in_gap": in_gap,
+                    "resting_hr": (
+                        round(median(hr_readings), 1) if hr_readings else None
+                    ),
+                    "steps": act.steps if act else None,
+                    "distance_m": act.distance_meters if act else None,
+                    "calories": act.calories if act else None,
+                    "active_minutes": act.active_minutes if act else None,
+                    "sleep_total_min": slp.total_minutes if slp else None,
+                    "sleep_deep_min": slp.deep_minutes if slp else None,
+                    "sleep_light_min": slp.light_minutes if slp else None,
+                    "sleep_rem_min": slp.rem_minutes if slp else None,
+                    "sleep_quality": slp.sleep_quality if slp else None,
+                    "avg_spo2": (
+                        round(mean(spo2_readings), 1) if spo2_readings else None
+                    ),
+                    "avg_stress": (
+                        round(mean(stress_readings), 1) if stress_readings else None
+                    ),
+                }
+            )
         return summaries
 
     def summary(self) -> str:
@@ -327,7 +346,9 @@ class ZeppReport:
         ]
         if self.gaps:
             for g in self.gaps:
-                lines.append(f"Gap detected: {g.start} → {g.end} ({g.days} days) — {g.reason}")
+                lines.append(
+                    f"Gap detected: {g.start} → {g.end} ({g.days} days) — {g.reason}"
+                )
         avg_hr = self.avg_resting_hr()
         if avg_hr:
             lines.append(f"Avg resting HR (30d): {avg_hr} bpm")
@@ -348,12 +369,20 @@ class ZeppReport:
         """Full serialization for API responses or DB storage."""
         return {
             "date_range": {
-                "start": self.date_range()[0].isoformat() if self.date_range()[0] else None,
-                "end":   self.date_range()[1].isoformat() if self.date_range()[1] else None,
+                "start": (
+                    self.date_range()[0].isoformat() if self.date_range()[0] else None
+                ),
+                "end": (
+                    self.date_range()[1].isoformat() if self.date_range()[1] else None
+                ),
             },
             "gaps": [
-                {"start": g.start.isoformat(), "end": g.end.isoformat(),
-                 "days": g.days, "reason": g.reason}
+                {
+                    "start": g.start.isoformat(),
+                    "end": g.end.isoformat(),
+                    "days": g.days,
+                    "reason": g.reason,
+                }
                 for g in self.gaps
             ],
             "aggregates": {
@@ -361,8 +390,12 @@ class ZeppReport:
                 "avg_sleep_hours_30d": self.avg_sleep_duration(30),
                 "avg_steps_30d": self.avg_steps(30),
                 "avg_spo2_30d": self.avg_spo2(30),
-                "latest_weight_kg": self.latest_weight().weight_kg if self.latest_weight() else None,
-                "latest_bmi": self.latest_weight().bmi if self.latest_weight() else None,
+                "latest_weight_kg": (
+                    self.latest_weight().weight_kg if self.latest_weight() else None
+                ),
+                "latest_bmi": (
+                    self.latest_weight().bmi if self.latest_weight() else None
+                ),
                 "total_workouts": len(self.workouts),
             },
             "daily_summaries": self.daily_summaries(),
@@ -374,6 +407,7 @@ class ZeppReport:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _in_gap(d: date, gaps: list[DataGap]) -> bool:
     return any(g.start <= d <= g.end for g in gaps)
@@ -426,8 +460,8 @@ def _find_column(header: list[str], candidates: list[str]) -> Optional[str]:
 def _detect_gaps(
     records_dates: list[date],
     known_gap_start: date = DEFAULT_GAP_START,
-    known_gap_end: date   = DEFAULT_GAP_END,
-    auto_gap_days: int    = 30,
+    known_gap_end: date = DEFAULT_GAP_END,
+    auto_gap_days: int = 30,
 ) -> list[DataGap]:
     """
     Detect data gaps:
@@ -437,11 +471,13 @@ def _detect_gaps(
     gaps: list[DataGap] = []
 
     # Known gap
-    gaps.append(DataGap(
-        start=known_gap_start,
-        end=known_gap_end,
-        reason="Mi Band 5 not worn (known gap)",
-    ))
+    gaps.append(
+        DataGap(
+            start=known_gap_start,
+            end=known_gap_end,
+            reason="Mi Band 5 not worn (known gap)",
+        )
+    )
 
     # Auto-detect additional gaps
     if len(records_dates) < 2:
@@ -451,14 +487,16 @@ def _detect_gaps(
         delta = (sorted_dates[i] - sorted_dates[i - 1]).days
         if delta > auto_gap_days:
             gap_start = sorted_dates[i - 1] + timedelta(days=1)
-            gap_end   = sorted_dates[i] - timedelta(days=1)
+            gap_end = sorted_dates[i] - timedelta(days=1)
             # Don't double-report if this overlaps the known gap
             if not (gap_start >= known_gap_start and gap_end <= known_gap_end):
-                gaps.append(DataGap(
-                    start=gap_start,
-                    end=gap_end,
-                    reason=f"No data for {delta} days (auto-detected)",
-                ))
+                gaps.append(
+                    DataGap(
+                        start=gap_start,
+                        end=gap_end,
+                        reason=f"No data for {delta} days (auto-detected)",
+                    )
+                )
     return gaps
 
 
@@ -467,14 +505,14 @@ def _detect_gaps(
 # ---------------------------------------------------------------------------
 
 SPORT_TYPE_MAP = {
-    "1":   "running",
-    "2":   "walking",
-    "4":   "cycling",
-    "6":   "elliptical",
-    "8":   "swimming",
-    "9":   "yoga",
-    "11":  "treadmill",
-    "16":  "strength",
+    "1": "running",
+    "2": "walking",
+    "4": "cycling",
+    "6": "elliptical",
+    "8": "swimming",
+    "9": "yoga",
+    "11": "treadmill",
+    "16": "strength",
     "112": "hiking",
 }
 
@@ -482,6 +520,7 @@ SPORT_TYPE_MAP = {
 # ---------------------------------------------------------------------------
 # ZeppParser
 # ---------------------------------------------------------------------------
+
 
 class ZeppParser:
     """
@@ -505,10 +544,10 @@ class ZeppParser:
     def __init__(
         self,
         gap_start: date = DEFAULT_GAP_START,
-        gap_end:   date = DEFAULT_GAP_END,
+        gap_end: date = DEFAULT_GAP_END,
     ) -> None:
         self.gap_start = gap_start
-        self.gap_end   = gap_end
+        self.gap_end = gap_end
 
     # ------------------------------------------------------------------
     # Public
@@ -556,20 +595,20 @@ class ZeppParser:
     def _parse_all(self, report: ZeppReport, file_reader) -> None:
         """Try to parse each known file type; skip gracefully if missing."""
         parsers = {
-            "HEARTRATE":      self._parse_heart_rate,
-            "SLEEP":          self._parse_sleep,
+            "HEARTRATE": self._parse_heart_rate,
+            "SLEEP": self._parse_sleep,
             "ACTIVITY_STAGE": self._parse_activity,
-            "SPORT":          self._parse_workouts,
-            "SPO2":           self._parse_spo2,
-            "STRESS":         self._parse_stress,
-            "BODY_WEIGHT":    self._parse_weight,
+            "SPORT": self._parse_workouts,
+            "SPO2": self._parse_spo2,
+            "STRESS": self._parse_stress,
+            "BODY_WEIGHT": self._parse_weight,
         }
         for key, parser_fn in parsers.items():
             content = file_reader(key)
             # Special case for heart rate which sometimes uses HEARTRATE_AUTO
             if key == "HEARTRATE" and content is None:
                 content = file_reader("HEARTRATE_AUTO")
-                
+
             if content is not None:
                 report.files_found.append(key)
                 try:
@@ -597,6 +636,7 @@ class ZeppParser:
 
     def _folder_reader(self, folder: Path):
         """Returns a callable that looks up CSV files by key name in folder."""
+
         def reader(key: str) -> Optional[str]:
             # Try exact name and common variations
             candidates = [
@@ -608,11 +648,13 @@ class ZeppParser:
                 if c.exists():
                     return c.read_text(encoding="utf-8", errors="replace")
             return None
+
         return reader
 
     def _zip_reader(self, zf: pyzipper.AESZipFile, pwd_bytes: bytes = None):
         """Returns a callable that looks up CSV files by key name in ZIP."""
         names = zf.namelist()
+
         def reader(key: str) -> Optional[str]:
             for name in names:
                 # Zepp export sometimes wraps files in a HEALTH_DATA/ directory
@@ -621,6 +663,7 @@ class ZeppParser:
                     with zf.open(name, pwd=pwd_bytes) as f:
                         return f.read().decode("utf-8", errors="replace")
             return None
+
         return reader
 
     # ------------------------------------------------------------------
@@ -634,7 +677,7 @@ class ZeppParser:
         # Handle BOM if present in the string
         if content.startswith("\ufeff"):
             content = content.lstrip("\ufeff")
-            
+
         lines = content.splitlines()
         # Zepp sometimes puts metadata in the first 1-2 rows before the header
         # Find the header row (first row that contains recognizable column names)
@@ -643,7 +686,16 @@ class ZeppParser:
             clean_line = line.lower().strip().replace("\ufeff", "")
             if "," in clean_line and any(
                 kw in clean_line
-                for kw in ["date", "time", "heart", "step", "sleep", "stress", "spo2", "weight"]
+                for kw in [
+                    "date",
+                    "time",
+                    "heart",
+                    "step",
+                    "sleep",
+                    "stress",
+                    "spo2",
+                    "weight",
+                ]
             ):
                 header_idx = i
                 break
@@ -661,7 +713,17 @@ class ZeppParser:
         header, rows = self._csv_rows(content)
         date_col = _find_column(header, ["date", "Date"])
         time_col = _find_column(header, ["time", "Time"])
-        hr_col   = _find_column(header, ["heartRate", "heart_rate", "bpm", "value", "HeartRate", "heart_rate_value"])
+        hr_col = _find_column(
+            header,
+            [
+                "heartRate",
+                "heart_rate",
+                "bpm",
+                "value",
+                "HeartRate",
+                "heart_rate_value",
+            ],
+        )
 
         if not hr_col:
             report.parse_errors.append("HEARTRATE: could not find heart rate column")
@@ -683,10 +745,12 @@ class ZeppParser:
                 if not (HR_MIN_PLAUSIBLE <= bpm <= HR_MAX_PLAUSIBLE):
                     continue  # filter implausible readings
 
-                report.heart_rate.append(HeartRateReading(
-                    timestamp=dt,
-                    bpm=bpm,
-                ))
+                report.heart_rate.append(
+                    HeartRateReading(
+                        timestamp=dt,
+                        bpm=bpm,
+                    )
+                )
             except Exception as e:
                 report.parse_errors.append(f"HEARTRATE row error: {e}")
 
@@ -700,14 +764,22 @@ class ZeppParser:
         """
         header, rows = self._csv_rows(content)
 
-        date_col  = _find_column(header, ["date", "Date", "night_date"])
+        date_col = _find_column(header, ["date", "Date", "night_date"])
         start_col = _find_column(header, ["start", "startTime", "start_time"])
-        end_col   = _find_column(header, ["stop", "end", "endTime", "end_time", "stopTime"])
-        deep_col  = _find_column(header, ["deepSleepTime", "deep_sleep", "deep", "deepTime"])
-        light_col = _find_column(header, ["shallowSleepTime", "light_sleep", "light", "shallowTime"])
-        rem_col   = _find_column(header, ["REMTime", "rem_sleep", "rem", "remTime"])
-        wake_col  = _find_column(header, ["wakeTime", "wake", "awake", "awakeTimes"])
-        eff_col   = _find_column(header, ["efficiency", "sleepEfficiency", "sleep_efficiency"])
+        end_col = _find_column(
+            header, ["stop", "end", "endTime", "end_time", "stopTime"]
+        )
+        deep_col = _find_column(
+            header, ["deepSleepTime", "deep_sleep", "deep", "deepTime"]
+        )
+        light_col = _find_column(
+            header, ["shallowSleepTime", "light_sleep", "light", "shallowTime"]
+        )
+        rem_col = _find_column(header, ["REMTime", "rem_sleep", "rem", "remTime"])
+        wake_col = _find_column(header, ["wakeTime", "wake", "awake", "awakeTimes"])
+        eff_col = _find_column(
+            header, ["efficiency", "sleepEfficiency", "sleep_efficiency"]
+        )
 
         for row in rows:
             try:
@@ -719,37 +791,45 @@ class ZeppParser:
 
                 # Start / end times
                 start_str = row.get(start_col, "") if start_col else ""
-                end_str   = row.get(end_col, "")   if end_col   else ""
-                start_dt  = _parse_dt(start_str, self.DT_FORMATS)
-                end_dt    = _parse_dt(end_str,   self.DT_FORMATS)
+                end_str = row.get(end_col, "") if end_col else ""
+                start_dt = _parse_dt(start_str, self.DT_FORMATS)
+                end_dt = _parse_dt(end_str, self.DT_FORMATS)
 
                 # Stage durations in minutes
-                deep  = _safe_int(row.get(deep_col,  "0") if deep_col  else "0")
+                deep = _safe_int(row.get(deep_col, "0") if deep_col else "0")
                 light = _safe_int(row.get(light_col, "0") if light_col else "0")
-                rem   = _safe_int(row.get(rem_col,   "0") if rem_col   else "0")
-                wake  = _safe_int(row.get(wake_col,  "0") if wake_col  else "0")
+                rem = _safe_int(row.get(rem_col, "0") if rem_col else "0")
+                wake = _safe_int(row.get(wake_col, "0") if wake_col else "0")
                 total = deep + light + rem + wake
 
                 # If total is 0 but we have start/end, calculate from them
                 if total == 0 and start_dt and end_dt:
                     total = int((end_dt - start_dt).total_seconds() / 60)
 
-                if total < 30:   # skip implausible sessions < 30 min
+                if total < 30:  # skip implausible sessions < 30 min
                     continue
 
                 efficiency = _safe_float(row.get(eff_col, "") if eff_col else "")
 
-                report.sleep.append(SleepSession(
-                    date=night_date,
-                    start=start_dt or datetime(night_date.year, night_date.month, night_date.day, 23, 0),
-                    end=end_dt or datetime(night_date.year, night_date.month, night_date.day, 7, 0),
-                    total_minutes=total,
-                    deep_minutes=deep,
-                    light_minutes=light,
-                    rem_minutes=rem,
-                    awake_minutes=wake,
-                    efficiency=efficiency,
-                ))
+                report.sleep.append(
+                    SleepSession(
+                        date=night_date,
+                        start=start_dt
+                        or datetime(
+                            night_date.year, night_date.month, night_date.day, 23, 0
+                        ),
+                        end=end_dt
+                        or datetime(
+                            night_date.year, night_date.month, night_date.day, 7, 0
+                        ),
+                        total_minutes=total,
+                        deep_minutes=deep,
+                        light_minutes=light,
+                        rem_minutes=rem,
+                        awake_minutes=wake,
+                        efficiency=efficiency,
+                    )
+                )
             except Exception as e:
                 report.parse_errors.append(f"SLEEP row error: {e}")
 
@@ -764,11 +844,14 @@ class ZeppParser:
         """
         header, rows = self._csv_rows(content)
 
-        date_col  = _find_column(header, ["date", "Date"])
+        date_col = _find_column(header, ["date", "Date"])
         steps_col = _find_column(header, ["steps", "step", "Steps", "totalStep"])
-        dist_col  = _find_column(header, ["distance", "Distance", "dis"])
-        cal_col   = _find_column(header, ["calories", "calorie", "Calories", "cal"])
-        val_col   = _find_column(header, ["value", "level", "activityLevel", "activity_level", "activity_stage"])
+        dist_col = _find_column(header, ["distance", "Distance", "dis"])
+        cal_col = _find_column(header, ["calories", "calorie", "Calories", "cal"])
+        val_col = _find_column(
+            header,
+            ["value", "level", "activityLevel", "activity_level", "activity_stage"],
+        )
 
         # Detect format: aggregated daily vs per-minute stages
         is_daily = steps_col is not None
@@ -780,13 +863,22 @@ class ZeppParser:
                     d = _parse_date(row.get(date_col, "") if date_col else "")
                     if not d:
                         continue
-                    report.activity.append(ActivityDay(
-                        date=d,
-                        steps=_safe_int(row.get(steps_col, "0") if steps_col else "0"),
-                        distance_meters=_safe_float(row.get(dist_col, "0") if dist_col else "0") or 0.0,
-                        calories=_safe_int(row.get(cal_col, "0") if cal_col else "0"),
-                        active_minutes=0,   # not available in daily format
-                    ))
+                    report.activity.append(
+                        ActivityDay(
+                            date=d,
+                            steps=_safe_int(
+                                row.get(steps_col, "0") if steps_col else "0"
+                            ),
+                            distance_meters=_safe_float(
+                                row.get(dist_col, "0") if dist_col else "0"
+                            )
+                            or 0.0,
+                            calories=_safe_int(
+                                row.get(cal_col, "0") if cal_col else "0"
+                            ),
+                            active_minutes=0,  # not available in daily format
+                        )
+                    )
                 except Exception as e:
                     report.parse_errors.append(f"ACTIVITY row error: {e}")
         else:
@@ -798,7 +890,9 @@ class ZeppParser:
                     if not d:
                         continue
                     level = _safe_int(row.get(val_col, "0") if val_col else "0")
-                    entry = daily.setdefault(d, {"steps": 0, "dist": 0.0, "cal": 0, "active": 0})
+                    entry = daily.setdefault(
+                        d, {"steps": 0, "dist": 0.0, "cal": 0, "active": 0}
+                    )
                     if level >= 3:
                         entry["active"] += 1
                     # steps/dist/cal not available in stage format
@@ -806,13 +900,15 @@ class ZeppParser:
                     report.parse_errors.append(f"ACTIVITY_STAGE row error: {e}")
 
             for d, vals in sorted(daily.items()):
-                report.activity.append(ActivityDay(
-                    date=d,
-                    steps=vals["steps"],
-                    distance_meters=vals["dist"],
-                    calories=vals["cal"],
-                    active_minutes=vals["active"],
-                ))
+                report.activity.append(
+                    ActivityDay(
+                        date=d,
+                        steps=vals["steps"],
+                        distance_meters=vals["dist"],
+                        calories=vals["cal"],
+                        active_minutes=vals["active"],
+                    )
+                )
 
         logger.info(f"Activity: {len(report.activity)} days parsed")
 
@@ -822,25 +918,29 @@ class ZeppParser:
         """
         header, rows = self._csv_rows(content)
 
-        date_col  = _find_column(header, ["date", "Date", "start_time"])
+        date_col = _find_column(header, ["date", "Date", "start_time"])
         start_col = _find_column(header, ["start", "startTime", "start_time"])
-        end_col   = _find_column(header, ["stop", "end", "endTime", "end_time"])
-        type_col  = _find_column(header, ["type", "sportType", "sport_type", "mode"])
-        cal_col   = _find_column(header, ["calories", "calorie"])
-        dist_col  = _find_column(header, ["distance", "dis"])
-        avghr_col = _find_column(header, ["avgHeartRate", "avg_heart_rate", "averageHeartRate"])
+        end_col = _find_column(header, ["stop", "end", "endTime", "end_time"])
+        type_col = _find_column(header, ["type", "sportType", "sport_type", "mode"])
+        cal_col = _find_column(header, ["calories", "calorie"])
+        dist_col = _find_column(header, ["distance", "dis"])
+        avghr_col = _find_column(
+            header, ["avgHeartRate", "avg_heart_rate", "averageHeartRate"]
+        )
         maxhr_col = _find_column(header, ["maxHeartRate", "max_heart_rate"])
         steps_col = _find_column(header, ["steps", "totalStep"])
 
         for row in rows:
             try:
-                start_str = row.get(start_col, "") if start_col else row.get(date_col, "")
-                start_dt  = _parse_dt(start_str, self.DT_FORMATS)
+                start_str = (
+                    row.get(start_col, "") if start_col else row.get(date_col, "")
+                )
+                start_dt = _parse_dt(start_str, self.DT_FORMATS)
                 if not start_dt:
                     continue
 
                 end_str = row.get(end_col, "") if end_col else ""
-                end_dt  = _parse_dt(end_str, self.DT_FORMATS)
+                end_dt = _parse_dt(end_str, self.DT_FORMATS)
 
                 duration = 0
                 if end_dt and start_dt:
@@ -849,23 +949,34 @@ class ZeppParser:
                 sport_raw = row.get(type_col, "0") if type_col else "0"
                 sport_type = SPORT_TYPE_MAP.get(sport_raw.strip(), f"sport_{sport_raw}")
 
-                dist_raw = _safe_float(row.get(dist_col, "0") if dist_col else "0") or 0.0
+                dist_raw = (
+                    _safe_float(row.get(dist_col, "0") if dist_col else "0") or 0.0
+                )
                 # Distance is sometimes in cm, sometimes in meters
-                if dist_raw > 100000:   # likely in cm
+                if dist_raw > 100000:  # likely in cm
                     dist_raw = dist_raw / 100
 
-                report.workouts.append(WorkoutSession(
-                    date=start_dt.date(),
-                    start=start_dt,
-                    end=end_dt or start_dt,
-                    sport_type=sport_type,
-                    duration_minutes=duration,
-                    calories=_safe_int(row.get(cal_col, "0") if cal_col else "0"),
-                    distance_meters=dist_raw,
-                    avg_heart_rate=_safe_int(row.get(avghr_col, "0") if avghr_col else "0") or None,
-                    max_heart_rate=_safe_int(row.get(maxhr_col, "0") if maxhr_col else "0") or None,
-                    steps=_safe_int(row.get(steps_col, "0") if steps_col else "0") or None,
-                ))
+                report.workouts.append(
+                    WorkoutSession(
+                        date=start_dt.date(),
+                        start=start_dt,
+                        end=end_dt or start_dt,
+                        sport_type=sport_type,
+                        duration_minutes=duration,
+                        calories=_safe_int(row.get(cal_col, "0") if cal_col else "0"),
+                        distance_meters=dist_raw,
+                        avg_heart_rate=_safe_int(
+                            row.get(avghr_col, "0") if avghr_col else "0"
+                        )
+                        or None,
+                        max_heart_rate=_safe_int(
+                            row.get(maxhr_col, "0") if maxhr_col else "0"
+                        )
+                        or None,
+                        steps=_safe_int(row.get(steps_col, "0") if steps_col else "0")
+                        or None,
+                    )
+                )
             except Exception as e:
                 report.parse_errors.append(f"SPORT row error: {e}")
 
@@ -877,7 +988,9 @@ class ZeppParser:
 
         date_col = _find_column(header, ["date", "Date"])
         time_col = _find_column(header, ["time", "Time"])
-        val_col  = _find_column(header, ["spo2", "SpO2", "value", "bloodOxygen", "blood_oxygen"])
+        val_col = _find_column(
+            header, ["spo2", "SpO2", "value", "bloodOxygen", "blood_oxygen"]
+        )
 
         if not val_col:
             report.parse_errors.append("SPO2: could not find SpO2 value column")
@@ -908,9 +1021,11 @@ class ZeppParser:
         """Parse STRESS.csv — stress score readings (0-100)."""
         header, rows = self._csv_rows(content)
 
-        date_col  = _find_column(header, ["date", "Date"])
-        time_col  = _find_column(header, ["time", "Time"])
-        val_col   = _find_column(header, ["stress", "stressScore", "stress_score", "value"])
+        date_col = _find_column(header, ["date", "Date"])
+        time_col = _find_column(header, ["time", "Time"])
+        val_col = _find_column(
+            header, ["stress", "stressScore", "stress_score", "value"]
+        )
 
         if not val_col:
             report.parse_errors.append("STRESS: could not find stress value column")
@@ -941,9 +1056,9 @@ class ZeppParser:
         """Parse BODY_WEIGHT.csv — weight and BMI entries."""
         header, rows = self._csv_rows(content)
 
-        date_col   = _find_column(header, ["date", "Date"])
+        date_col = _find_column(header, ["date", "Date"])
         weight_col = _find_column(header, ["weight", "Weight", "weightKg", "weight_kg"])
-        bmi_col    = _find_column(header, ["bmi", "BMI"])
+        bmi_col = _find_column(header, ["bmi", "BMI"])
 
         if not weight_col:
             report.parse_errors.append("BODY_WEIGHT: could not find weight column")
@@ -961,17 +1076,19 @@ class ZeppParser:
 
                 # Convert to kg if likely in grams or lbs
                 if weight > 500:
-                    weight = weight / 1000   # grams → kg
+                    weight = weight / 1000  # grams → kg
                 elif weight > 150:
                     weight = weight * 0.453592  # lbs → kg (rough heuristic)
 
                 bmi = _safe_float(row.get(bmi_col, "") if bmi_col else "")
 
-                report.weight.append(WeightEntry(
-                    date=d,
-                    weight_kg=round(weight, 2),
-                    bmi=round(bmi, 1) if bmi else None,
-                ))
+                report.weight.append(
+                    WeightEntry(
+                        date=d,
+                        weight_kg=round(weight, 2),
+                        bmi=round(bmi, 1) if bmi else None,
+                    )
+                )
             except Exception as e:
                 report.parse_errors.append(f"BODY_WEIGHT row error: {e}")
 

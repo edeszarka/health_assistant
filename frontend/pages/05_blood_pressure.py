@@ -22,9 +22,13 @@ with st.form("bp_form"):
     st.subheader("New Reading")
     c1, c2, c3 = st.columns(3)
     with c1:
-        systolic = st.number_input("Systolic (mmHg)", min_value=50, max_value=300, value=120)
+        systolic = st.number_input(
+            "Systolic (mmHg)", min_value=50, max_value=300, value=120
+        )
     with c2:
-        diastolic = st.number_input("Diastolic (mmHg)", min_value=30, max_value=200, value=80)
+        diastolic = st.number_input(
+            "Diastolic (mmHg)", min_value=30, max_value=200, value=80
+        )
     with c3:
         pulse = st.number_input("Pulse (bpm)", min_value=30, max_value=250, value=72)
     context = st.selectbox(
@@ -80,7 +84,9 @@ try:
         df["measured_at"] = pd.to_datetime(df["measured_at"])
         df = df.sort_values("measured_at")
         st.line_chart(
-            df.set_index("measured_at")[["systolic", "diastolic", "pulse"]].dropna(axis=1)
+            df.set_index("measured_at")[["systolic", "diastolic", "pulse"]].dropna(
+                axis=1
+            )
         )
     else:
         st.info("No readings yet.")

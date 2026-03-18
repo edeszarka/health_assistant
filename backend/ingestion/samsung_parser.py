@@ -1,4 +1,5 @@
 """Samsung Health ZIP export parser."""
+
 from __future__ import annotations
 
 import csv
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class SamsungMetricRaw:
     """A single metric extracted from a Samsung Health export."""
 
-    metric_type: str   # steps / sleep_minutes / heart_rate / weight_kg / bmi
+    metric_type: str  # steps / sleep_minutes / heart_rate / weight_kg / bmi
     value: float
     recorded_at: datetime
     source_file: str
@@ -57,7 +58,9 @@ class SamsungHealthParser:
             raise RuntimeError(f"Failed to parse Samsung Health ZIP: {exc}") from exc
         return results
 
-    def parse_zip_bytes(self, content: bytes, filename: str = "samsung.zip") -> list[SamsungMetricRaw]:
+    def parse_zip_bytes(
+        self, content: bytes, filename: str = "samsung.zip"
+    ) -> list[SamsungMetricRaw]:
         """Parse directly from in-memory ZIP bytes.
 
         Args:
@@ -86,7 +89,9 @@ class SamsungHealthParser:
                     elif "body" in basename:
                         results.extend(self._parse_body(file_content, name))
         except Exception as exc:
-            raise RuntimeError(f"Failed to parse Samsung Health ZIP bytes: {exc}") from exc
+            raise RuntimeError(
+                f"Failed to parse Samsung Health ZIP bytes: {exc}"
+            ) from exc
         return results
 
     # ── Private parsers ──────────────────────────────────────────────────────
@@ -98,7 +103,9 @@ class SamsungHealthParser:
             rows = self._read_csv(content)
             for row in rows:
                 # Samsung format typically has 'day_time' and 'count' columns
-                ts = self._parse_date(row.get("day_time") or row.get("start_time") or "")
+                ts = self._parse_date(
+                    row.get("day_time") or row.get("start_time") or ""
+                )
                 val = float(row.get("count") or row.get("step_count") or 0)
                 if ts and val:
                     metrics.append(SamsungMetricRaw("steps", val, ts, source))
@@ -112,12 +119,16 @@ class SamsungHealthParser:
         try:
             rows = self._read_csv(content)
             for row in rows:
-                ts = self._parse_date(row.get("start_time") or row.get("day_time") or "")
+                ts = self._parse_date(
+                    row.get("start_time") or row.get("day_time") or ""
+                )
                 # duration may be in minutes already or in HH:MM format
                 raw_dur = str(row.get("sleep_duration") or row.get("duration") or "0")
                 minutes = self._duration_to_minutes(raw_dur)
                 if ts and minutes:
-                    metrics.append(SamsungMetricRaw("sleep_minutes", minutes, ts, source))
+                    metrics.append(
+                        SamsungMetricRaw("sleep_minutes", minutes, ts, source)
+                    )
         except Exception:
             pass
         return metrics
@@ -128,8 +139,12 @@ class SamsungHealthParser:
         try:
             rows = self._read_csv(content)
             for row in rows:
-                ts = self._parse_date(row.get("start_time") or row.get("day_time") or "")
-                val = float(row.get("heart_rate") or row.get("bpm") or row.get("avg") or 0)
+                ts = self._parse_date(
+                    row.get("start_time") or row.get("day_time") or ""
+                )
+                val = float(
+                    row.get("heart_rate") or row.get("bpm") or row.get("avg") or 0
+                )
                 if ts and val:
                     metrics.append(SamsungMetricRaw("heart_rate", val, ts, source))
         except Exception:
@@ -142,11 +157,15 @@ class SamsungHealthParser:
         try:
             rows = self._read_csv(content)
             for row in rows:
-                ts = self._parse_date(row.get("start_time") or row.get("day_time") or "")
+                ts = self._parse_date(
+                    row.get("start_time") or row.get("day_time") or ""
+                )
                 weight = row.get("weight") or row.get("weight_kg")
                 bmi = row.get("bmi")
                 if ts and weight:
-                    metrics.append(SamsungMetricRaw("weight_kg", float(weight), ts, source))
+                    metrics.append(
+                        SamsungMetricRaw("weight_kg", float(weight), ts, source)
+                    )
                 if ts and bmi:
                     metrics.append(SamsungMetricRaw("bmi", float(bmi), ts, source))
         except Exception:
@@ -164,13 +183,13 @@ class SamsungHealthParser:
                 text = content.decode(encoding)
                 # If it's UTF-16, check if it actually looks like text
                 if encoding == "utf-16" and "\x00" in text[:100]:
-                    continue # likely wrong
-                
+                    continue  # likely wrong
+
                 # Check if we have at least some commas or tabs
                 if "," not in text and "\t" not in text and len(text) > 10:
-                    if encoding != "latin-1": # latin-1 is fallback
+                    if encoding != "latin-1":  # latin-1 is fallback
                         continue
-                
+
                 reader = csv.DictReader(io.StringIO(text))
                 rows = list(reader)
                 if rows and len(rows[0]) > 0:
@@ -186,7 +205,7 @@ class SamsungHealthParser:
                 return data
         except Exception:
             pass
-        
+
         print("[ERROR] Failed to decode file content as CSV or JSON")
         return []
 
@@ -194,24 +213,24 @@ class SamsungHealthParser:
     def _parse_date(raw: str) -> datetime | None:
         """Try several date formats used by Samsung Health."""
         for fmt in (
-            "%Y-%m-%d %H:%M:%S.%f", 
-            "%Y-%m-%d %H:%M:%S", 
-            "%Y-%m-%d", 
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
             "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%d %H:%M"
+            "%Y-%m-%d %H:%M",
         ):
             try:
                 return datetime.strptime(raw.strip(), fmt)
             except ValueError:
                 continue
-        
+
         # Try partial match if it's a long ISO string with timezone
         if len(raw) > 19:
             try:
                 return datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
             except ValueError:
                 pass
-                
+
         return None
 
     @staticmethod

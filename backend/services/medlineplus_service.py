@@ -1,4 +1,5 @@
 """MedlinePlus Web Service integration with DB caching and rate limiting."""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,8 +20,8 @@ class _TokenBucket:
     """Simple async token-bucket for rate limiting (max 80 req/min)."""
 
     def __init__(self, rate: int = 80, per: float = 60.0) -> None:
-        self._rate = rate          # tokens per period
-        self._per = per            # period in seconds
+        self._rate = rate  # tokens per period
+        self._per = per  # period in seconds
         self._tokens = float(rate)
         self._last_check = asyncio.get_event_loop().time()
         self._lock = asyncio.Lock()
@@ -140,11 +141,28 @@ class MedlinePlusService:
                 title_el = doc.find(".//content[@name='title']")
                 summary_el = doc.find(".//content[@name='snippet']")
                 url = doc.attrib.get("url", "")
-                title = title_el.text.strip() if title_el is not None and title_el.text else fallback_term
-                summary = summary_el.text.strip() if summary_el is not None and summary_el.text else ""
+                title = (
+                    title_el.text.strip()
+                    if title_el is not None and title_el.text
+                    else fallback_term
+                )
+                summary = (
+                    summary_el.text.strip()
+                    if summary_el is not None and summary_el.text
+                    else ""
+                )
                 # Remove HTML tags from summary
-                summary = ET.tostring(summary_el, encoding="unicode", method="text") if summary_el is not None else summary
-                return {"title": title, "summary": summary[:500], "url": url, "specialist": None}
+                summary = (
+                    ET.tostring(summary_el, encoding="unicode", method="text")
+                    if summary_el is not None
+                    else summary
+                )
+                return {
+                    "title": title,
+                    "summary": summary[:500],
+                    "url": url,
+                    "specialist": None,
+                }
         except Exception:
             pass
         return {"title": fallback_term, "summary": "", "url": None, "specialist": None}
@@ -169,7 +187,9 @@ class MedlinePlusService:
     async def _get_cache(self, cache_key: str, db: AsyncSession) -> Optional[dict]:
         """Return cached result if not expired, else None."""
         try:
-            stmt = select(MedlinePlusCache).where(MedlinePlusCache.cache_key == cache_key)
+            stmt = select(MedlinePlusCache).where(
+                MedlinePlusCache.cache_key == cache_key
+            )
             result = await db.execute(stmt)
             row = result.scalar_one_or_none()
             if row and row.expires_at > datetime.now(timezone.utc):
@@ -184,7 +204,9 @@ class MedlinePlusService:
         """Upsert a cache entry with configured TTL."""
         try:
             expires = datetime.now(timezone.utc) + timedelta(days=self._ttl_days)
-            stmt = select(MedlinePlusCache).where(MedlinePlusCache.cache_key == cache_key)
+            stmt = select(MedlinePlusCache).where(
+                MedlinePlusCache.cache_key == cache_key
+            )
             result = await db.execute(stmt)
             row = result.scalar_one_or_none()
             if row:

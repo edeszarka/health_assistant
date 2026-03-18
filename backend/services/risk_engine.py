@@ -1,4 +1,5 @@
 """Framingham and FINDRISC risk score calculators + AHA BP classification."""
+
 from __future__ import annotations
 
 
@@ -9,25 +10,43 @@ class RiskEngine:
 
     # Point tables: age points by sex
     _FRAMINGHAM_AGE_MALE = {
-        (20, 34): -9, (35, 39): -4, (40, 44): 0,
-        (45, 49): 3,  (50, 54): 6,  (55, 59): 8,
-        (60, 64): 10, (65, 69): 11, (70, 74): 12, (75, 999): 13,
+        (20, 34): -9,
+        (35, 39): -4,
+        (40, 44): 0,
+        (45, 49): 3,
+        (50, 54): 6,
+        (55, 59): 8,
+        (60, 64): 10,
+        (65, 69): 11,
+        (70, 74): 12,
+        (75, 999): 13,
     }
     _FRAMINGHAM_AGE_FEMALE = {
-        (20, 34): -7, (35, 39): -3, (40, 44): 0,
-        (45, 49): 3,  (50, 54): 6,  (55, 59): 8,
-        (60, 64): 10, (65, 69): 12, (70, 74): 14, (75, 999): 16,
+        (20, 34): -7,
+        (35, 39): -3,
+        (40, 44): 0,
+        (45, 49): 3,
+        (50, 54): 6,
+        (55, 59): 8,
+        (60, 64): 10,
+        (65, 69): 12,
+        (70, 74): 14,
+        (75, 999): 16,
     }
 
     # Total cholesterol by age group (points for <160, 160-199, 200-239, 240-279, ≥280)
     _FRAMINGHAM_TC_MALE = {
-        (20, 39): [0, 4, 7, 9, 11], (40, 49): [0, 3, 5, 6, 8],
-        (50, 59): [0, 2, 3, 4, 5],  (60, 69): [0, 1, 1, 2, 3],
+        (20, 39): [0, 4, 7, 9, 11],
+        (40, 49): [0, 3, 5, 6, 8],
+        (50, 59): [0, 2, 3, 4, 5],
+        (60, 69): [0, 1, 1, 2, 3],
         (70, 999): [0, 0, 0, 1, 1],
     }
     _FRAMINGHAM_TC_FEMALE = {
-        (20, 39): [0, 4, 8, 11, 13], (40, 49): [0, 3, 6, 8, 10],
-        (50, 59): [0, 2, 4, 5, 7],   (60, 69): [0, 1, 2, 3, 4],
+        (20, 39): [0, 4, 8, 11, 13],
+        (40, 49): [0, 3, 6, 8, 10],
+        (50, 59): [0, 2, 4, 5, 7],
+        (60, 69): [0, 1, 2, 3, 4],
         (70, 999): [0, 1, 1, 2, 2],
     }
 
@@ -36,32 +55,78 @@ class RiskEngine:
 
     # SBP points (treated vs untreated) for male/female
     _FRAMINGHAM_SBP_MALE_UNTREATED = {
-        (0, 119): 0, (120, 129): 0, (130, 139): 1,
-        (140, 159): 1, (160, 999): 2,
+        (0, 119): 0,
+        (120, 129): 0,
+        (130, 139): 1,
+        (140, 159): 1,
+        (160, 999): 2,
     }
     _FRAMINGHAM_SBP_MALE_TREATED = {
-        (0, 119): 0, (120, 129): 1, (130, 139): 2,
-        (140, 159): 2, (160, 999): 3,
+        (0, 119): 0,
+        (120, 129): 1,
+        (130, 139): 2,
+        (140, 159): 2,
+        (160, 999): 3,
     }
     _FRAMINGHAM_SBP_FEMALE_UNTREATED = {
-        (0, 119): 0, (120, 129): 1, (130, 139): 2,
-        (140, 159): 3, (160, 999): 4,
+        (0, 119): 0,
+        (120, 129): 1,
+        (130, 139): 2,
+        (140, 159): 3,
+        (160, 999): 4,
     }
     _FRAMINGHAM_SBP_FEMALE_TREATED = {
-        (0, 119): 0, (120, 129): 3, (130, 139): 4,
-        (140, 159): 5, (160, 999): 6,
+        (0, 119): 0,
+        (120, 129): 3,
+        (130, 139): 4,
+        (140, 159): 5,
+        (160, 999): 6,
     }
 
     # 10-year risk lookup tables (points → risk %)
     _FRAMINGHAM_RISK_MALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
+        -3: 1,
+        -2: 1,
+        -1: 1,
+        0: 1,
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 2,
+        6: 2,
+        7: 3,
+        8: 4,
+        9: 5,
+        10: 6,
+        11: 8,
+        12: 10,
+        13: 12,
+        14: 16,
+        15: 20,
+        16: 25,
     }
     _FRAMINGHAM_RISK_FEMALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
+        -3: 1,
+        -2: 1,
+        -1: 1,
+        0: 1,
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 2,
+        6: 2,
+        7: 3,
+        8: 4,
+        9: 5,
+        10: 6,
+        11: 8,
+        12: 10,
+        13: 12,
+        14: 16,
+        15: 20,
+        16: 25,
     }
 
     def calculate_framingham(
@@ -102,20 +167,25 @@ class RiskEngine:
         tc_pts_list = self._lookup_range(tc_table, age)
         if isinstance(tc_pts_list, list):
             tc_idx = (
-                0 if total_cholesterol < 160
-                else 1 if total_cholesterol < 200
-                else 2 if total_cholesterol < 240
-                else 3 if total_cholesterol < 280
-                else 4
+                0
+                if total_cholesterol < 160
+                else (
+                    1
+                    if total_cholesterol < 200
+                    else (
+                        2
+                        if total_cholesterol < 240
+                        else 3 if total_cholesterol < 280 else 4
+                    )
+                )
             )
             points += tc_pts_list[tc_idx]
 
         # HDL points
         hdl_idx = (
-            0 if hdl_cholesterol >= 60
-            else 1 if hdl_cholesterol >= 50
-            else 2 if hdl_cholesterol >= 40
-            else 3
+            0
+            if hdl_cholesterol >= 60
+            else 1 if hdl_cholesterol >= 50 else 2 if hdl_cholesterol >= 40 else 3
         )
         points += self._FRAMINGHAM_HDL[hdl_idx]
 
@@ -143,16 +213,22 @@ class RiskEngine:
             points += 11 if male else 13
 
         # Clamp to lookup range
-        risk_table = self._FRAMINGHAM_RISK_MALE if male else self._FRAMINGHAM_RISK_FEMALE
+        risk_table = (
+            self._FRAMINGHAM_RISK_MALE if male else self._FRAMINGHAM_RISK_FEMALE
+        )
         clamped = max(min(points, max(risk_table.keys())), min(risk_table.keys()))
         risk_pct = risk_table.get(clamped, 30)
 
         category = (
-            "Low (<10%)" if risk_pct < 10
-            else "Moderate (10-20%)" if risk_pct <= 20
-            else "High (>20%)"
+            "Low (<10%)"
+            if risk_pct < 10
+            else "Moderate (10-20%)" if risk_pct <= 20 else "High (>20%)"
         )
-        return {"score_points": points, "risk_percent": float(risk_pct), "risk_category": category}
+        return {
+            "score_points": points,
+            "risk_percent": float(risk_pct),
+            "risk_category": category,
+        }
 
     # ── FINDRISC ─────────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 """LLM chat service via Ollama with bilingual (HU/EN) system prompt."""
+
 from __future__ import annotations
 
 import httpx
@@ -125,17 +126,21 @@ class LLMService:
         rs = risk_scores or {}
 
         # Pick prompt template based on query type
-        template = _BASE_PROMPT_THINKING if query_type == "risk_analysis" else _BASE_PROMPT
+        template = (
+            _BASE_PROMPT_THINKING if query_type == "risk_analysis" else _BASE_PROMPT
+        )
 
         system_content = template.format(
             age=getattr(profile, "age", "Unknown"),
             sex=getattr(profile, "sex", "Unknown"),
             smoking=getattr(profile, "smoking", False),
             bp_medication=getattr(profile, "bp_medication", False),
-            family_history_summary=family_history_summary or "No family history recorded.",
+            family_history_summary=family_history_summary
+            or "No family history recorded.",
             flagged_values=flagged_values or "No flagged lab values.",
             bp_summary=bp_summary or "No blood pressure data.",
-            health_metrics_summary=health_metrics_summary or "No wearable/Samsung data available.",
+            health_metrics_summary=health_metrics_summary
+            or "No wearable/Samsung data available.",
             framingham=rs.get("framingham_risk_percent", "N/A"),
             findrisc=rs.get("findrisc_score", "N/A"),
             rag_context=context or "(No additional context available.)",

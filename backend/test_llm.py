@@ -7,6 +7,7 @@ import traceback
 import httpx
 import pdfplumber
 
+
 async def main():
     try:
         # We need a small text
@@ -27,27 +28,27 @@ async def main():
         )
 
         payload = {
-            "model": "llama3.2", # we need to check config.py for model name, I will just use llama3.2
+            "model": "llama3.2",  # we need to check config.py for model name, I will just use llama3.2
             "prompt": prompt,
             "stream": False,
         }
-        
+
         url = "http://localhost:11434/api/generate"
         async with httpx.AsyncClient(timeout=1000.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             raw = resp.json().get("response", "")
-            
+
             print("RAW RESPONSE:")
             print(raw)
             print("---")
-            
+
             raw = re.sub(r"```(?:json)?", "", raw).strip()
             raw = raw.rstrip("`").strip()
-            
+
             print("CLEANED RESPONSE:")
             print(raw)
-            
+
             try:
                 data = json.loads(raw)
                 print("parsed data type:", type(data))
@@ -59,6 +60,7 @@ async def main():
                 print("JSON Decode error!")
     except Exception as e:
         print("err", e)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

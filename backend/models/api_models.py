@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 # ─── Lab Results ────────────────────────────────────────────────────────────
 
+
 class LabResultResponse(BaseModel):
     """Single lab result returned by the API."""
 
@@ -35,13 +36,14 @@ class LabResultsListResponse(BaseModel):
 
 # ─── Blood Pressure ──────────────────────────────────────────────────────────
 
+
 class BloodPressureCreate(BaseModel):
     """Payload for creating a new BP reading."""
 
     systolic: int
     diastolic: int
     pulse: Optional[int] = None
-    context: Optional[str] = None   # morning/evening/after_exercise/stressed
+    context: Optional[str] = None  # morning/evening/after_exercise/stressed
     measured_at: Optional[datetime] = None
 
 
@@ -68,11 +70,12 @@ class BPSummaryResponse(BaseModel):
     avg_systolic_30d: Optional[float]
     avg_diastolic_30d: Optional[float]
     classification: str
-    trend_direction: str   # "improving" / "stable" / "worsening"
+    trend_direction: str  # "improving" / "stable" / "worsening"
     reading_count: int
 
 
 # ─── Family History ──────────────────────────────────────────────────────────
+
 
 class FamilyHistoryCreate(BaseModel):
     """Payload for adding a family history entry."""
@@ -100,6 +103,7 @@ class FamilyHistoryResponse(BaseModel):
 
 # ─── Chat ────────────────────────────────────────────────────────────────────
 
+
 class ChatRequest(BaseModel):
     """User chat message + conversation history."""
 
@@ -116,6 +120,7 @@ class ChatResponse(BaseModel):
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 
+
 class DashboardSummary(BaseModel):
     """Top-level health summary for the dashboard."""
 
@@ -128,18 +133,20 @@ class DashboardSummary(BaseModel):
 
 # ─── Screening ───────────────────────────────────────────────────────────────
 
+
 class ScreeningRecommendation(BaseModel):
     """A single preventive screening recommendation."""
 
     test_name: str
     reason: str
-    urgency: str   # "routine" / "soon" / "urgent"
+    urgency: str  # "routine" / "soon" / "urgent"
     specialist: str
     medlineplus_url: Optional[str] = None
     medlineplus_summary: Optional[str] = None
 
 
 # ─── Risk Scores ─────────────────────────────────────────────────────────────
+
 
 class RiskScoreResponse(BaseModel):
     """A calculated health risk score."""

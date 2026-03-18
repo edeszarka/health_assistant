@@ -8,6 +8,7 @@ BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Health Dashboard")
 
+
 # ── Fetch data ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def fetch_summary():
@@ -43,7 +44,11 @@ col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     cls = bp.get("classification", "No data")
-    colour = "🟢" if "Normal" in cls else "🟡" if "Elevated" in cls or "Stage 1" in cls else "🔴"
+    colour = (
+        "🟢"
+        if "Normal" in cls
+        else "🟡" if "Elevated" in cls or "Stage 1" in cls else "🔴"
+    )
     st.metric("BP Classification", f"{colour} {cls}")
 
 with col2:

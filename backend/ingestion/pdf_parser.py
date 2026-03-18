@@ -27,28 +27,31 @@ logger = logging.getLogger(__name__)
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LabValue:
     """A single parsed lab test result."""
-    raw_name: str                        # Exact name from PDF e.g. "Fehérvérsejt"
-    normalized_name: str                 # Standard key e.g. "wbc"
+
+    raw_name: str  # Exact name from PDF e.g. "Fehérvérsejt"
+    normalized_name: str  # Standard key e.g. "wbc"
     value: float
     unit: str
     ref_range_low: Optional[float]
     ref_range_high: Optional[float]
-    ref_range_text: str                  # Raw reference range string from PDF
-    is_flagged: bool                     # True if out of range
-    flag_direction: Optional[str]        # "high", "low", or None
-    who_code: Optional[str]              # WHO code if present e.g. "28014"
-    group: Optional[str]                 # Panel group e.g. "Teljes vérkép"
+    ref_range_text: str  # Raw reference range string from PDF
+    is_flagged: bool  # True if out of range
+    flag_direction: Optional[str]  # "high", "low", or None
+    who_code: Optional[str]  # WHO code if present e.g. "28014"
+    group: Optional[str]  # Panel group e.g. "Teljes vérkép"
 
 
 @dataclass
 class PatientInfo:
     """Patient metadata extracted from the PDF header."""
+
     name: Optional[str] = None
     birth_date: Optional[date] = None
-    sex: Optional[str] = None           # normalized to "male" / "female"
+    sex: Optional[str] = None  # normalized to "male" / "female"
     taj_number: Optional[str] = None
     sample_date: Optional[datetime] = None
     referring_doctor: Optional[str] = None
@@ -58,6 +61,7 @@ class PatientInfo:
 @dataclass
 class ParsedLabReport:
     """Full parsed result of one lab PDF."""
+
     patient: PatientInfo
     results: list[LabValue]
     source_filename: str
@@ -73,10 +77,18 @@ class ParsedLabReport:
         return {
             "patient": {
                 "name": self.patient.name,
-                "birth_date": self.patient.birth_date.isoformat() if self.patient.birth_date else None,
+                "birth_date": (
+                    self.patient.birth_date.isoformat()
+                    if self.patient.birth_date
+                    else None
+                ),
                 "sex": self.patient.sex,
                 "taj_number": self.patient.taj_number,
-                "sample_date": self.patient.sample_date.isoformat() if self.patient.sample_date else None,
+                "sample_date": (
+                    self.patient.sample_date.isoformat()
+                    if self.patient.sample_date
+                    else None
+                ),
                 "referring_doctor": self.patient.referring_doctor,
                 "lab_name": self.patient.lab_name,
             },
@@ -200,6 +212,7 @@ def normalize_name(raw_name: str) -> str:
 # PDFParser
 # ---------------------------------------------------------------------------
 
+
 class PDFParser:
     """
     Parse Hungarian/Latin medical lab result PDFs into structured data.
@@ -247,12 +260,28 @@ class PDFParser:
 
     # Lines to always skip
     _SKIP_KEYWORDS = {
-        "telefon", "http", "www", "email", "fax",
-        "beküldő", "orvos", "laborba", "validálva",
-        "archiválva", "összpont", "mintavétel",
-        "laborbaérkezés", "jogviszony", "előző",
-        "taj szám", "típus", "sorszám", "lakáscím",
-        "tart.cím", "született", "megjegyz",
+        "telefon",
+        "http",
+        "www",
+        "email",
+        "fax",
+        "beküldő",
+        "orvos",
+        "laborba",
+        "validálva",
+        "archiválva",
+        "összpont",
+        "mintavétel",
+        "laborbaérkezés",
+        "jogviszony",
+        "előző",
+        "taj szám",
+        "típus",
+        "sorszám",
+        "lakáscím",
+        "tart.cím",
+        "született",
+        "megjegyz",
     }
 
     def __init__(self) -> None:
@@ -327,7 +356,7 @@ class PDFParser:
         # we detect and collapse this automatically.
         label_m = self._NAME_LABEL_RE.search(text)
         if label_m:
-            before = text[:label_m.start()]
+            before = text[: label_m.start()]
             prev_lines = [l.strip() for l in before.splitlines() if l.strip()]
             if prev_lines:
                 candidate = prev_lines[-1]
@@ -358,7 +387,9 @@ class PDFParser:
         m = self._SAMPLE_DATE_RE.search(text)
         if m:
             try:
-                info.sample_date = datetime.strptime(m.group(1).strip(), "%Y-%m-%d %H:%M")
+                info.sample_date = datetime.strptime(
+                    m.group(1).strip(), "%Y-%m-%d %H:%M"
+                )
             except ValueError:
                 errors.append(f"Bad sample date: {m.group(1)}")
 
@@ -422,7 +453,7 @@ class PDFParser:
         # Split name / value on first colon
         colon_idx = line.index(":")
         name_raw = line[:colon_idx].strip()
-        value_raw = line[colon_idx + 1:].strip()
+        value_raw = line[colon_idx + 1 :].strip()
 
         # Strip WHO code from name
         if who_code:
@@ -480,7 +511,9 @@ class PDFParser:
             return None
 
         # Remove trailing "Valid" / "Invalid"
-        section = re.sub(r"\s*\b(Valid|Invalid)\b\s*$", "", section, flags=re.IGNORECASE).strip()
+        section = re.sub(
+            r"\s*\b(Valid|Invalid)\b\s*$", "", section, flags=re.IGNORECASE
+        ).strip()
 
         # Skip non-numeric text values (Neg, Pos, etc.)
         if re.match(r"^(Neg|Pos|negatív|pozitív|Nincs)\b", section, re.IGNORECASE):
@@ -504,7 +537,9 @@ class PDFParser:
         if inline_flag and not is_flagged:
             flag_dir = "high"
             is_flagged = True
-            section = section[: inline_flag.start()] + " " + section[inline_flag.end():]
+            section = (
+                section[: inline_flag.start()] + " " + section[inline_flag.end() :]
+            )
             section = section.strip()
 
         # ---- Extract numeric value ----------------------------------------
@@ -517,7 +552,7 @@ class PDFParser:
         except ValueError:
             return None
 
-        rest = section[num_match.end():].strip()
+        rest = section[num_match.end() :].strip()
 
         # ---- Extract reference range from rest ----------------------------
         ref_text = ""
@@ -590,7 +625,9 @@ if __name__ == "__main__":
     print(f"Sample:    {report.patient.sample_date}")
     print(f"Doctor:    {report.patient.referring_doctor}")
     print(f"{'='*60}")
-    print(f"Results:   {len(report.results)} total  |  {len(report.flagged_results)} flagged")
+    print(
+        f"Results:   {len(report.results)} total  |  {len(report.flagged_results)} flagged"
+    )
     print(f"{'='*60}\n")
 
     if report.flagged_results:

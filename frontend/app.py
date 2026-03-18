@@ -13,7 +13,8 @@ st.warning(
     "Always consult a licensed physician before making any medical decisions."
 )
 
-st.markdown("""
+st.markdown(
+    """
 Use the sidebar to navigate between sections:
 
 | Page | Description |
@@ -24,4 +25,5 @@ Use the sidebar to navigate between sections:
 | 💉 Blood Pressure | Track BP readings over time |
 | 🧬 Family History | Record hereditary conditions |
 | 📋 Recommendations | Personalised screening checklist |
-""")
+"""
+)

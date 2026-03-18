@@ -1,7 +1,15 @@
 import datetime
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, Date, Text,
-    DateTime, ForeignKey, func,
+    Column,
+    Integer,
+    String,
+    Float,
+    Boolean,
+    Date,
+    Text,
+    DateTime,
+    ForeignKey,
+    func,
 )
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -15,7 +23,7 @@ class UserProfile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     age = Column(Integer, nullable=False)
-    sex = Column(String(10), nullable=False)       # "male" / "female" / "other"
+    sex = Column(String(10), nullable=False)  # "male" / "female" / "other"
     smoking = Column(Boolean, default=False)
     bp_medication = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -30,8 +38,8 @@ class LabResult(Base):
     __tablename__ = "lab_results"
 
     id = Column(Integer, primary_key=True, index=True)
-    test_name = Column(String(128), nullable=False, index=True)    # normalised key
-    raw_name = Column(String(256), nullable=False)                  # original from PDF
+    test_name = Column(String(128), nullable=False, index=True)  # normalised key
+    raw_name = Column(String(256), nullable=False)  # original from PDF
     value = Column(Float, nullable=False)
     unit = Column(String(64))
     ref_range_low = Column(Float, nullable=True)
@@ -52,7 +60,9 @@ class BloodPressureReading(Base):
     systolic = Column(Integer, nullable=False)
     diastolic = Column(Integer, nullable=False)
     pulse = Column(Integer, nullable=True)
-    context = Column(String(32), nullable=True)   # morning/evening/after_exercise/stressed
+    context = Column(
+        String(32), nullable=True
+    )  # morning/evening/after_exercise/stressed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -62,7 +72,9 @@ class FamilyHistory(Base):
     __tablename__ = "family_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    relation = Column(String(64), nullable=False)   # mother/father/maternal_grandmother …
+    relation = Column(
+        String(64), nullable=False
+    )  # mother/father/maternal_grandmother …
     condition = Column(String(256), nullable=False)
     icd10_code = Column(String(16), nullable=True)
     age_of_onset = Column(Integer, nullable=True)

@@ -1,4 +1,5 @@
 """Lab result name normalisation: Hungarian/Latin → English standard keys."""
+
 from __future__ import annotations
 
 
