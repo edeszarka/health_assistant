@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from datetime import date, timedelta
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
@@ -26,15 +27,36 @@ from services.risk_engine import risk_engine
 router = APIRouter()
 
 
+RISK_SCORE_LABS: set[str] = {
+    "total_cholesterol", "hdl_cholesterol", "ldl_cholesterol",
+    "cholesterol", "hdl", "ldl", "glucose", "hba1c", "triglycerides",
+}
+RELEVANT_LAB_TESTS: set[str] = {
+    "wbc", "rbc", "hemoglobin", "hematocrit", "platelets",
+    "lymphocytes_abs", "lymphocytes_pct", "monocytes_abs", "monocytes_pct",
+    "neutrophils_abs", "neutrophils_pct", "eosinophils_abs", "eosinophils_pct",
+    "basophils_abs", "basophils_pct", "mcv", "mch", "mchc", "mpv", "esr",
+    "glucose", "hba1c", "bun", "creatinine", "uric_acid", "egfr",
+    "sodium", "potassium", "calcium", "magnesium", "chloride",
+    "ast", "alt", "ggt", "gamma_gt", "alp", "total_bilirubin", "direct_bilirubin",
+    "total_cholesterol", "hdl_cholesterol", "ldl_cholesterol", "triglycerides",
+    "serum_iron", "ferritin", "transferrin", "tibc", "total_protein", "albumin",
+    "tsh", "free_t4", "free_t3", "crp", "urinalysis", "urine_sediment",
+}
+
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
 
 
 def _detect_language(message: str) -> str:
-    """
-    Detect whether the user is writing in Hungarian or English.
-    Returns 'Hungarian' or 'English'.
+    """Detect whether the user is writing in Hungarian or English.
+
+    Args:
+        message: The user's input message string.
+
+    Returns:
+        A string, either 'Hungarian' or 'English'.
     """
     hungarian_chars = set("áéíóöőúüűÁÉÍÓÖŐÚÜŰ")
     hungarian_words = {
@@ -53,10 +75,16 @@ def _detect_language(message: str) -> str:
 # ---------------------------------------------------------------------------
 
 async def _build_health_metrics_summary(db: AsyncSession) -> str:
-    """
-    YOUR activity and biometric numbers from Samsung Health and Zepp.
+    """Build a summary of activity and biometric numbers from Samsung Health and Zepp.
+
     Covers last 7 days detail, 30-day averages, 18-month top days,
-    monthly step averages, HR, sleep, weight, calories.
+    monthly step averages, HR, sleep, weight, and calories.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        A formatted multi-line string summary of health metrics.
     """
     lines = []
     today   = date.today()
@@ -197,10 +225,16 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
 
 
 async def _build_lab_trends_summary(db: AsyncSession) -> str:
-    """
-    YOUR lab history with trend analysis.
+    """Build a summary of lab history with trend analysis.
+
     Groups results by test name, computes direction and % change over time.
-    Derives HIGH/LOW from ref_range columns (no flag_direction column in schema).
+    Derives HIGH/LOW from ref_range columns.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        A formatted multi-line string summary of lab results and trends.
     """
     lines = []
     try:
@@ -213,26 +247,10 @@ async def _build_lab_trends_summary(db: AsyncSession) -> str:
         if not all_labs:
             return "No lab results on record."
 
-        by_test: dict[str, list] = defaultdict(list)
+        by_test: dict[str, list[LabResult]] = defaultdict(list)
         for r in all_labs:
             by_test[r.test_name].append(r)
 
-        RISK_SCORE_LABS = {
-            "total_cholesterol", "hdl_cholesterol", "ldl_cholesterol",
-            "cholesterol", "hdl", "ldl", "glucose", "hba1c", "triglycerides",
-        }
-        RELEVANT_LAB_TESTS = {
-            "wbc", "rbc", "hemoglobin", "hematocrit", "platelets",
-            "lymphocytes_abs", "lymphocytes_pct", "monocytes_abs", "monocytes_pct",
-            "neutrophils_abs", "neutrophils_pct", "eosinophils_abs", "eosinophils_pct",
-            "basophils_abs", "basophils_pct", "mcv", "mch", "mchc", "mpv", "esr",
-            "glucose", "hba1c", "bun", "creatinine", "uric_acid", "egfr",
-            "sodium", "potassium", "calcium", "magnesium", "chloride",
-            "ast", "alt", "ggt", "gamma_gt", "alp", "total_bilirubin", "direct_bilirubin",
-            "total_cholesterol", "hdl_cholesterol", "ldl_cholesterol", "triglycerides",
-            "serum_iron", "ferritin", "transferrin", "tibc", "total_protein", "albumin",
-            "tsh", "free_t4", "free_t3", "crp", "urinalysis", "urine_sediment",
-        }
 
         flagged_lines = []
         trend_lines   = []
@@ -310,9 +328,15 @@ async def _build_lab_trends_summary(db: AsyncSession) -> str:
 
 
 async def _build_bp_summary(db: AsyncSession) -> str:
-    """
-    YOUR blood pressure history.
-    Always returns latest reading regardless of age, plus average if 3+ readings.
+    """Build a summary of blood pressure history.
+
+    Always returns latest reading plus average if 3+ readings are available.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        A formatted multi-line string summary of blood pressure readings.
     """
     try:
         result = await db.execute(
@@ -343,7 +367,14 @@ async def _build_bp_summary(db: AsyncSession) -> str:
 
 
 async def _build_family_history_summary(db: AsyncSession) -> str:
-    """YOUR family risk factors."""
+    """Build a summary of family risk factors.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        A formatted multi-line string summary of family medical history.
+    """
     try:
         result  = await db.execute(select(FamilyHistory))
         entries = result.scalars().all()
@@ -361,18 +392,24 @@ async def _build_family_history_summary(db: AsyncSession) -> str:
 
 async def _build_risk_scores(
     db: AsyncSession,
-    profile: UserProfile | None,
+    profile: Optional[UserProfile],
     user_message: str = "",
-) -> dict:
+) -> Dict[str, Any]:
+    """Calculate FINDRISC and fetch Framingham risk scores, including hypothetical overrides.
+
+    Args:
+        db: Async database session.
+        profile: The user's profile object.
+        user_message: The user's latest input message, used to detect hypothetical scenarios.
+
+    Returns:
+        A dictionary containing calculated risk scores and categories.
     """
-    Calculate FINDRISC from profile, fetch Framingham from RiskScore table,
-    and detect hypothetical values in the user's message to re-run either
-    score with overrides. All math is done in Python — the LLM only presents results.
-    """
-    scores = {}
+    scores: Dict[str, Any] = {}
     fam_diabetes = "none" 
-    # ── Helper: fetch latest lab value ───────────────────────────────────────
-    async def _get_lab(test_name: str) -> float | None:
+    
+    async def _get_lab(test_name: str) -> Optional[float]:
+        """Fetch the latest numeric value for a specific lab test."""
         res = await db.execute(
             select(LabResult.value)
             .where(LabResult.test_name == test_name)
@@ -383,7 +420,8 @@ async def _build_risk_scores(
         row = res.scalar_one_or_none()
         return float(row) if row is not None else None
 
-    async def _get_latest_systolic() -> int | None:
+    async def _get_latest_systolic() -> Optional[int]:
+        """Fetch the latest systolic blood pressure reading."""
         res = await db.execute(
             select(BloodPressureReading.systolic)
             .order_by(BloodPressureReading.measured_at.desc())
@@ -392,7 +430,8 @@ async def _build_risk_scores(
         row = res.scalar_one_or_none()
         return int(row) if row is not None else None
 
-    async def _get_latest_weight() -> float | None:
+    async def _get_latest_weight() -> Optional[float]:
+        """Fetch the latest weight measurement in kg."""
         res = await db.execute(
             select(SamsungHealthMetric.value)
             .where(SamsungHealthMetric.metric_type == "weight_kg")
@@ -438,93 +477,99 @@ async def _build_risk_scores(
 
         # ── 3. Detect hypothetical inputs in user message ─────────────────────
         msg = user_message.lower()
+        # Only run hypothetical detection if message contains hypothetical language
+        HYPOTHETICAL_TRIGGERS = {
+            "what if", "if i", "suppose", "assuming", "hypothetically",
+            "if my", "would be", "were", "ha ", "mi lenne", "ha én",
+        }
+        is_hypothetical = any(t in msg for t in HYPOTHETICAL_TRIGGERS)
+        if is_hypothetical:
+            # --- FINDRISC hypothetical ---
+            findrisc_overrides: Dict[str, float] = {}
+            findrisc_labels: List[str] = []
 
-        # --- FINDRISC hypothetical ---
-        findrisc_overrides: dict = {}
-        findrisc_labels: list[str] = []
+            m = re.search(r"waist\s*(?:circumference)?[^\d]*(\d+\.?\d*)\s*cm", msg)
+            if m:
+                findrisc_overrides["waist_cm"] = float(m.group(1))
+                findrisc_labels.append(f"waist_cm={m.group(1)} cm")
 
-        m = re.search(r"waist\s*(?:circumference)?[^\d]*(\d+\.?\d*)\s*cm", msg)
-        if m:
-            findrisc_overrides["waist_cm"] = float(m.group(1))
-            findrisc_labels.append(f"waist_cm={m.group(1)} cm")
+            m = re.search(r"(\d+\.?\d*)\s*kg", msg)
+            if m and profile and profile.height_cm:
+                hypo_weight = float(m.group(1))
+                findrisc_overrides["bmi"] = hypo_weight / ((profile.height_cm / 100) ** 2)
+                findrisc_labels.append(f"weight={m.group(1)} kg")
 
-        m = re.search(r"(\d+\.?\d*)\s*kg", msg)
-        if m and profile and profile.height_cm:
-            hypo_weight = float(m.group(1))
-            findrisc_overrides["bmi"] = hypo_weight / ((profile.height_cm / 100) ** 2)
-            findrisc_labels.append(f"weight={m.group(1)} kg")
+            m = re.search(r"\bbmi\b\D*(\d+\.?\d*)", msg)
+            if m:
+                findrisc_overrides["bmi"] = float(m.group(1))
+                findrisc_labels.append(f"BMI={m.group(1)}")
 
-        m = re.search(r"\bbmi\b\D*(\d+\.?\d*)", msg)
-        if m:
-            findrisc_overrides["bmi"] = float(m.group(1))
-            findrisc_labels.append(f"BMI={m.group(1)}")
-
-        if findrisc_overrides and profile:
-            h = risk_engine.calculate_findrisc(
-                age=profile.age,
-                sex=profile.sex,
-                waist_cm=findrisc_overrides.get("waist_cm", getattr(profile, "waist_cm", None)),
-                bmi=findrisc_overrides.get("bmi", bmi_from_db),
-                physical_activity_mins_per_day=30.0,
-                vegetables_daily=getattr(profile, "vegetables_daily", False),
-                hypertension_medication=getattr(profile, "bp_medication", False),
-                high_glucose_history=getattr(profile, "high_glucose_history", False),
-                family_history_diabetes=fam_diabetes,
-            )
-            scores["findrisc_hypothetical"] = (
-                f"Score={h['score']} ({h['risk_category']}, "
-                f"10-yr risk {h['ten_year_risk_percent']}%) "
-                f"— recalculated with {', '.join(findrisc_labels)}"
-            )
-
-        # --- Framingham hypothetical ---
-        fram_overrides: dict = {}
-        fram_labels: list[str] = []
-
-        m = re.search(r"(?:total\s+)?cholesterol[^\d]*(\d+\.?\d*)", msg)
-        if m:
-            fram_overrides["total_cholesterol"] = float(m.group(1))
-            fram_labels.append(f"total_cholesterol={m.group(1)}")
-
-        m = re.search(r"\bhdl\b[^\d]*(\d+\.?\d*)", msg)
-        if m:
-            fram_overrides["hdl_cholesterol"] = float(m.group(1))
-            fram_labels.append(f"HDL={m.group(1)}")
-
-        m = re.search(r"systolic[^\d]*(\d+)|blood pressure[^\d]*(\d+)", msg)
-        if m:
-            val = m.group(1) or m.group(2)
-            fram_overrides["systolic_bp"] = int(val)
-            fram_labels.append(f"systolic_bp={val}")
-
-        if fram_labels and profile:
-            tc    = fram_overrides.get("total_cholesterol") or await _get_lab("total_cholesterol") or await _get_lab("cholesterol")
-            hdl   = fram_overrides.get("hdl_cholesterol")  or await _get_lab("hdl_cholesterol")  or await _get_lab("hdl")
-            sys_bp = fram_overrides.get("systolic_bp")     or await _get_latest_systolic()
-
-            if tc and hdl and sys_bp:
-                g = risk_engine.calculate_framingham(
+            if findrisc_overrides and profile:
+                h = risk_engine.calculate_findrisc(
                     age=profile.age,
                     sex=profile.sex,
-                    total_cholesterol=tc,
-                    hdl_cholesterol=hdl,
-                    systolic_bp=sys_bp,
-                    bp_treated=getattr(profile, "bp_medication", False),
-                    diabetes=getattr(profile, "high_glucose_history", False),
-                    smoker=getattr(profile, "smoking", False),
+                    waist_cm=findrisc_overrides.get("waist_cm", getattr(profile, "waist_cm", None)),
+                    bmi=findrisc_overrides.get("bmi", bmi_from_db),
+                    physical_activity_mins_per_day=30.0,
+                    vegetables_daily=getattr(profile, "vegetables_daily", False),
+                    hypertension_medication=getattr(profile, "bp_medication", False),
+                    high_glucose_history=getattr(profile, "high_glucose_history", False),
+                    family_history_diabetes=fam_diabetes,
                 )
-                scores["framingham_hypothetical"] = (
-                    f"{g['risk_percent']}% 10-yr CV risk ({g['risk_category']}) "
-                    f"— recalculated with {', '.join(fram_labels)}"
+                scores["findrisc_hypothetical"] = (
+                    f"Score={h['score']} ({h['risk_category']}, "
+                    f"10-yr risk {h['ten_year_risk_percent']}%) "
+                    f"— recalculated with {', '.join(findrisc_labels)}"
                 )
-            else:
-                missing = []
-                if not tc:   missing.append("total cholesterol")
-                if not hdl:  missing.append("HDL cholesterol")
-                if not sys_bp: missing.append("systolic BP")
-                scores["framingham_hypothetical"] = (
-                    f"Cannot recalculate: missing {', '.join(missing)} from database."
-                )
+
+            # --- Framingham hypothetical ---
+            fram_overrides: Dict[str, Any] = {}
+            fram_labels: List[str] = []
+
+            m = re.search(r"(?:total\s+)?cholesterol[^\d]*(\d+\.?\d*)", msg)
+            if m:
+                fram_overrides["total_cholesterol"] = float(m.group(1))
+                fram_labels.append(f"total_cholesterol={m.group(1)}")
+
+            m = re.search(r"\bhdl\b[^\d]*(\d+\.?\d*)", msg)
+            if m:
+                fram_overrides["hdl_cholesterol"] = float(m.group(1))
+                fram_labels.append(f"HDL={m.group(1)}")
+
+            m = re.search(r"systolic[^\d]*(\d+)|blood pressure[^\d]*(\d+)", msg)
+            if m:
+                val = m.group(1) or m.group(2)
+                fram_overrides["systolic_bp"] = int(val)
+                fram_labels.append(f"systolic_bp={val}")
+
+            if fram_labels and profile:
+                tc    = fram_overrides.get("total_cholesterol") or await _get_lab("total_cholesterol") or await _get_lab("cholesterol")
+                hdl   = fram_overrides.get("hdl_cholesterol")  or await _get_lab("hdl_cholesterol")  or await _get_lab("hdl")
+                sys_bp = fram_overrides.get("systolic_bp")     or await _get_latest_systolic()
+
+                if tc and hdl and sys_bp:
+                    g = risk_engine.calculate_framingham(
+                        age=profile.age,
+                        sex=profile.sex,
+                        total_cholesterol=tc,
+                        hdl_cholesterol=hdl,
+                        systolic_bp=sys_bp,
+                        bp_treated=getattr(profile, "bp_medication", False),
+                        diabetes=getattr(profile, "high_glucose_history", False),
+                        smoker=getattr(profile, "smoking", False),
+                    )
+                    scores["framingham_hypothetical"] = (
+                        f"{g['risk_percent']}% 10-yr CV risk ({g['risk_category']}) "
+                        f"— recalculated with {', '.join(fram_labels)}"
+                    )
+                else:
+                    missing = []
+                    if not tc:   missing.append("total cholesterol")
+                    if not hdl:  missing.append("HDL cholesterol")
+                    if not sys_bp: missing.append("systolic BP")
+                    scores["framingham_hypothetical"] = (
+                        f"Cannot recalculate: missing {', '.join(missing)} from database."
+                    )
 
     except Exception as e:
         print(f"Error calculating risk scores: {e}")
@@ -542,13 +587,19 @@ async def chat(
     request: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
-    """
-    Accept a user message, build full context from DB, return LLM reply.
+    """Accept a user message, build full context from DB, and return an LLM reply.
 
     Architecture:
     - chat.py   → structured data (SQL): labs, metrics, BP, family history
     - rag_service → unstructured knowledge (vector search): medical context
     - llm_service → receives both, reasons over them, never fetches data itself
+
+    Args:
+        request: The ChatRequest containing message and history.
+        db: Async database session.
+
+    Returns:
+        A ChatResponse object containing the assistant's reply.
     """
     # Detect language first — passed to LLM to enforce reply language
     user_language = _detect_language(request.message)
@@ -570,8 +621,8 @@ async def chat(
     # RAG — semantic search for medical knowledge only, no structured data
     try:
         rag_context = await rag_service.build_context(request.message, profile, db)
-    except Exception:
-        rag_context = ""
+    except Exception as e:
+        rag_context = f"(Medical knowledge retrieval unavailable due to system error: {e})"
 
     # LLM — receives everything, decides nothing about data fetching
     try:

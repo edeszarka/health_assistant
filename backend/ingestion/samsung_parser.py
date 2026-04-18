@@ -9,14 +9,21 @@ import logging
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, List, Optional, Dict
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SamsungMetricRaw:
-    """A single metric extracted from a Samsung Health export."""
+    """A single metric extracted from a Samsung Health export.
+
+    Attributes:
+        metric_type: The type of metric (e.g., 'steps', 'sleep_minutes').
+        value: The numeric value of the metric.
+        recorded_at: The timestamp when the metric was recorded.
+        source_file: The name of the file within the export from which this was parsed.
+    """
 
     metric_type: str  # steps / sleep_minutes / heart_rate / weight_kg / bmi
     value: float
@@ -27,7 +34,7 @@ class SamsungMetricRaw:
 class SamsungHealthParser:
     """Parses Samsung Health ZIP export archives into structured metrics."""
 
-    def parse_zip(self, zip_path: str) -> list[SamsungMetricRaw]:
+    def parse_zip(self, zip_path: str) -> List[SamsungMetricRaw]:
         """Open a Samsung Health ZIP and extract all recognised metrics.
 
         Args:
@@ -35,8 +42,11 @@ class SamsungHealthParser:
 
         Returns:
             List of SamsungMetricRaw objects.
+
+        Raises:
+            RuntimeError: If the ZIP file cannot be opened or parsed.
         """
-        results: list[SamsungMetricRaw] = []
+        results: List[SamsungMetricRaw] = []
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
                 logger.info(f"ZIP contents: {zf.namelist()}")
@@ -60,7 +70,7 @@ class SamsungHealthParser:
 
     def parse_zip_bytes(
         self, content: bytes, filename: str = "samsung.zip"
-    ) -> list[SamsungMetricRaw]:
+    ) -> List[SamsungMetricRaw]:
         """Parse directly from in-memory ZIP bytes.
 
         Args:
@@ -69,8 +79,11 @@ class SamsungHealthParser:
 
         Returns:
             List of SamsungMetricRaw objects.
+
+        Raises:
+            RuntimeError: If the ZIP bytes cannot be parsed.
         """
-        results: list[SamsungMetricRaw] = []
+        results: List[SamsungMetricRaw] = []
         try:
             with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
                 logger.info(f"ZIP contents: {zf.namelist()}")
@@ -96,15 +109,23 @@ class SamsungHealthParser:
 
     # ── Private parsers ──────────────────────────────────────────────────────
 
-    def _parse_steps(self, content: bytes, source: str) -> list[SamsungMetricRaw]:
-        """Parse step count CSV/JSON."""
-        metrics: list[SamsungMetricRaw] = []
+    def _parse_steps(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Parse step count CSV/JSON content.
+
+        Args:
+            content: The raw bytes of the steps file.
+            source: The name of the source file.
+
+        Returns:
+            A list of extracted step metrics.
+        """
+        metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
             for row in rows:
                 # Samsung format typically has 'day_time' and 'count' columns
                 ts = self._parse_date(
-                    row.get("day_time") or row.get("start_time") or ""
+                    str(row.get("day_time") or row.get("start_time") or "")
                 )
                 val = float(row.get("count") or row.get("step_count") or 0)
                 if ts and val:
@@ -113,14 +134,22 @@ class SamsungHealthParser:
             pass
         return metrics
 
-    def _parse_sleep(self, content: bytes, source: str) -> list[SamsungMetricRaw]:
-        """Parse sleep duration CSV/JSON into total minutes."""
-        metrics: list[SamsungMetricRaw] = []
+    def _parse_sleep(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Parse sleep duration CSV/JSON content into total minutes.
+
+        Args:
+            content: The raw bytes of the sleep file.
+            source: The name of the source file.
+
+        Returns:
+            A list of extracted sleep metrics.
+        """
+        metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
             for row in rows:
                 ts = self._parse_date(
-                    row.get("start_time") or row.get("day_time") or ""
+                    str(row.get("start_time") or row.get("day_time") or "")
                 )
                 # duration may be in minutes already or in HH:MM format
                 raw_dur = str(row.get("sleep_duration") or row.get("duration") or "0")
@@ -133,14 +162,22 @@ class SamsungHealthParser:
             pass
         return metrics
 
-    def _parse_heart_rate(self, content: bytes, source: str) -> list[SamsungMetricRaw]:
-        """Parse heart rate CSV/JSON (average per entry)."""
-        metrics: list[SamsungMetricRaw] = []
+    def _parse_heart_rate(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Parse heart rate CSV/JSON content (average per entry).
+
+        Args:
+            content: The raw bytes of the heart rate file.
+            source: The name of the source file.
+
+        Returns:
+            A list of extracted heart rate metrics.
+        """
+        metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
             for row in rows:
                 ts = self._parse_date(
-                    row.get("start_time") or row.get("day_time") or ""
+                    str(row.get("start_time") or row.get("day_time") or "")
                 )
                 val = float(
                     row.get("heart_rate") or row.get("bpm") or row.get("avg") or 0
@@ -151,14 +188,22 @@ class SamsungHealthParser:
             pass
         return metrics
 
-    def _parse_body(self, content: bytes, source: str) -> list[SamsungMetricRaw]:
-        """Parse body composition CSV/JSON into weight_kg and bmi."""
-        metrics: list[SamsungMetricRaw] = []
+    def _parse_body(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Parse body composition CSV/JSON content into weight_kg and bmi.
+
+        Args:
+            content: The raw bytes of the body composition file.
+            source: The name of the source file.
+
+        Returns:
+            A list of extracted body composition metrics.
+        """
+        metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
             for row in rows:
                 ts = self._parse_date(
-                    row.get("start_time") or row.get("day_time") or ""
+                    str(row.get("start_time") or row.get("day_time") or "")
                 )
                 weight = row.get("weight") or row.get("weight_kg")
                 bmi = row.get("bmi")
@@ -175,8 +220,15 @@ class SamsungHealthParser:
     # ── Utilities ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _read_csv(content: bytes) -> list[dict[str, Any]]:
-        """Try multiple encodings for CSV; fall back to JSON."""
+    def _read_csv(content: bytes) -> List[Dict[str, Any]]:
+        """Try multiple encodings for CSV; fall back to JSON.
+
+        Args:
+            content: The raw bytes of the file to read.
+
+        Returns:
+            A list of dictionaries representing the rows of the CSV or JSON list.
+        """
         # Try different encodings
         for encoding in ("utf-8", "utf-16", "utf-8-sig", "latin-1"):
             try:
@@ -210,8 +262,15 @@ class SamsungHealthParser:
         return []
 
     @staticmethod
-    def _parse_date(raw: str) -> datetime | None:
-        """Try several date formats used by Samsung Health."""
+    def _parse_date(raw: str) -> Optional[datetime]:
+        """Try several date formats used by Samsung Health.
+
+        Args:
+            raw: The raw date string.
+
+        Returns:
+            The parsed datetime object, or None if parsing fails.
+        """
         for fmt in (
             "%Y-%m-%d %H:%M:%S.%f",
             "%Y-%m-%d %H:%M:%S",
@@ -235,7 +294,14 @@ class SamsungHealthParser:
 
     @staticmethod
     def _duration_to_minutes(raw: str) -> float:
-        """Convert a duration string (HH:MM or plain number) to float minutes."""
+        """Convert a duration string (HH:MM or plain number) to float minutes.
+
+        Args:
+            raw: The raw duration string.
+
+        Returns:
+            The duration in minutes as a float.
+        """
         raw = raw.strip()
         if ":" in raw:
             parts = raw.split(":")
