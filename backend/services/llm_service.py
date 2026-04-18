@@ -119,6 +119,7 @@ class LLMService:
     """
 
     def __init__(self) -> None:
+        """Initializes the LLMService with Ollama configuration settings."""
         self._base_url = settings.ollama_base_url
         self._model    = settings.ollama_model
 
@@ -152,7 +153,10 @@ class LLMService:
             family_history_summary: Family medical history entries.
 
         Returns:
-            The assistant's reply as a plain string.
+            The generated response from the assistant as a plain string.
+
+        Raises:
+            RuntimeError: If the request to the Ollama API fails or returns an error.
         """
         profile = user_profile
         rs      = risk_scores or {}

@@ -13,9 +13,14 @@ from models.db_models import Embedding
 
 
 class RAGService:
-    """Manages document embeddings and semantic similarity retrieval."""
+    """Manages document embeddings and semantic similarity retrieval.
+
+    This service handles communication with the Ollama embedding API and
+    performs vector similarity searches using pgvector.
+    """
 
     def __init__(self) -> None:
+        """Initializes the RAGService with Ollama configuration settings."""
         self._embed_url = f"{settings.ollama_base_url}/api/embeddings"
         self._embed_model = settings.embed_model
 
@@ -25,10 +30,13 @@ class RAGService:
         """Generate an embedding vector for the given text using Ollama.
 
         Args:
-            text_content: The text to embed.
+            text_content: The text string to be converted into a vector embedding.
 
         Returns:
-            768-dimensional float list.
+            A 768-dimensional float list representing the semantic embedding of the text.
+
+        Raises:
+            RuntimeError: If the embedding request to Ollama fails or returns an error.
         """
         try:
             async with httpx.AsyncClient(timeout=1020.0) as client:
@@ -51,10 +59,13 @@ class RAGService:
         """Embed and persist a text chunk to the embeddings table.
 
         Args:
-            source_type: One of lab_result/samsung_summary/family_history/guideline/bp_summary.
-            source_id: Foreign-key id to the source row (nullable).
-            content: The text to embed.
-            db: Async DB session.
+            source_type: The category of the source (e.g., 'lab_result', 'bp_summary').
+            source_id: The primary key ID of the source record in its respective table.
+            content: The actual text content to be embedded and stored.
+            db: The asynchronous SQLAlchemy database session.
+
+        Returns:
+            None.
         """
         vector = await self.embed_text(content)
         emb = Embedding(
@@ -78,12 +89,13 @@ class RAGService:
         """Semantic similarity search using pgvector cosine distance.
 
         Args:
-            query: The user's question or topic.
-            limit: Maximum number of results to return.
-            db: Async DB session.
+            query: The user's question or search topic.
+            limit: The maximum number of results to return. Defaults to 5.
+            threshold: The minimum similarity score (1 - cosine distance). Defaults to 0.75.
+            db: The asynchronous SQLAlchemy database session. Defaults to None.
 
         Returns:
-            List of matching content strings (most relevant first).
+            A list of matching content strings, ordered by relevance (most relevant first).
         """
         if db is None:
             return []
@@ -120,13 +132,22 @@ class RAGService:
         stored embeddings.
 
         Args:
-            query: The user's message.
-            user_profile: UserProfile ORM row (or None).
-            db: Async DB session.
+            query: The user's input message.
+            user_profile: The UserProfile ORM object or None.
+            db: The asynchronous SQLAlchemy database session.
 
         Returns:
-            Formatted context string containing relevant matches.
+            A formatted context string containing relevant matches from the vector store.
         """
+        sections: list[str] = []
+
+        # 1. Semantic search for relevant matches
+        similar = await self.similarity_search(query, limit=5, db=db)
+        if similar:
+            sections.append("=== Relevant Health Context ===")
+            sections.extend(similar)
+
+        return "\n".join(sections)
         sections: list[str] = []
 
         # 1. Semantic search for relevant matches

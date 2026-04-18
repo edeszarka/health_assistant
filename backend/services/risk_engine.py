@@ -144,16 +144,19 @@ class RiskEngine:
 
         Args:
             age: Patient age in years.
-            sex: "male" or "female".
-            total_cholesterol: Total cholesterol in mg/dL.
-            hdl_cholesterol: HDL cholesterol in mg/dL.
-            systolic_bp: Systolic blood pressure in mmHg.
-            bp_treated: Whether the patient takes antihypertensive medication.
-            diabetes: Whether the patient has diabetes.
-            smoker: Whether the patient currently smokes.
+            sex: The biological sex of the patient ("male" or "female").
+            total_cholesterol: Total cholesterol level in mg/dL.
+            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL.
+            systolic_bp: Systolic blood pressure reading in mmHg.
+            bp_treated: True if the patient is on antihypertensive medication, False otherwise.
+            diabetes: True if the patient has a diagnosis of diabetes, False otherwise.
+            smoker: True if the patient is a current smoker, False otherwise.
 
         Returns:
-            Dict with score_points, risk_percent, risk_category.
+            A dictionary containing:
+                - score_points (int): The total calculated Framingham points.
+                - risk_percent (float): The estimated 10-year risk of a cardiovascular event.
+                - risk_category (str): A qualitative description of the risk level (e.g., "Low", "High").
         """
         male = sex.lower() == "male"
         points = 0
