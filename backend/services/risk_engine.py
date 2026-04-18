@@ -235,7 +235,9 @@ class RiskEngine:
     def calculate_findrisc(
         self,
         age: int,
-        bmi: float,
+        sex: str,
+        waist_cm: float | None,
+        bmi: float | None,
         physical_activity_mins_per_day: float,
         vegetables_daily: bool,
         hypertension_medication: bool,
@@ -247,7 +249,9 @@ class RiskEngine:
 
         Args:
             age: Patient age in years.
-            bmi: Body mass index.
+            sex: "male" or "female".
+            waist_cm: Waist circumference in cm (optional).
+            bmi: Body mass index (optional).
             physical_activity_mins_per_day: Average daily physical activity minutes.
             vegetables_daily: Whether the patient eats vegetables/fruit daily.
             hypertension_medication: Whether patient takes antihypertensive drugs.
@@ -270,12 +274,30 @@ class RiskEngine:
             score += 4
 
         # BMI
-        if bmi < 25:
-            score += 0
-        elif bmi <= 30:
-            score += 1
-        else:
-            score += 3
+        if bmi is not None:
+            if bmi < 25:
+                score += 0
+            elif bmi <= 30:
+                score += 1
+            else:
+                score += 3
+        
+        # Waist circumference
+        if waist_cm is not None:
+            if sex.lower() == "male":
+                if waist_cm < 94:
+                    score += 0
+                elif 94 <= waist_cm <= 102:
+                    score += 3
+                else:
+                    score += 4
+            else:
+                if waist_cm < 80:
+                    score += 0
+                elif 80 <= waist_cm <= 88:
+                    score += 3
+                else:
+                    score += 4
 
         # Physical activity (≥30 min/day most days → ≥30 * 5/7)
         if physical_activity_mins_per_day < 21:  # ~30min × 5/7 days

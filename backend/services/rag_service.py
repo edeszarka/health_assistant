@@ -72,6 +72,7 @@ class RAGService:
         self,
         query: str,
         limit: int = 5,
+        threshold: float = 0.75,
         db: AsyncSession = None,
     ) -> list[str]:
         """Semantic similarity search using pgvector cosine distance.
@@ -90,10 +91,14 @@ class RAGService:
         vector = await self.embed_text(query)
         # pgvector operator <=> is cosine distance
         stmt = (
-            select(Embedding.content)
-            .order_by(Embedding.embedding.op("<=>")(vector))
-            .limit(limit)
-        )
+                select(Embedding.content)
+                .where(
+                    # only return chunks closer than threshold
+                    (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
+                )
+                .order_by(Embedding.embedding.op("<=>")(vector))
+                .limit(limit)
+            )
         try:
             result = await db.execute(stmt)
             return [row[0] for row in result.fetchall()]
@@ -108,13 +113,11 @@ class RAGService:
         user_profile: Optional[object],
         db: AsyncSession,
     ) -> str:
-        """Assemble a rich context string for the LLM prompt.
-
-        Steps:
-        1. Semantic similarity search.
-        2. Fetch latest 5 flagged labs.
-        3. Fetch 30-day BP average.
-        4. Fetch all family history.
+        """Assemble a rich context string using semantic similarity search.
+        
+        This method avoids duplicating data already injected by the chat router
+        (labs, BP, etc.) and focuses on finding relevant matching content from
+        stored embeddings.
 
         Args:
             query: The user's message.
@@ -122,141 +125,15 @@ class RAGService:
             db: Async DB session.
 
         Returns:
-            Formatted multi-section context string.
+            Formatted context string containing relevant matches.
         """
-        from models.db_models import LabResult, BloodPressureReading, FamilyHistory
-
         sections: list[str] = []
 
-        # 1. Semantic search
+        # 1. Semantic search for relevant matches
         similar = await self.similarity_search(query, limit=5, db=db)
         if similar:
             sections.append("=== Relevant Health Context ===")
             sections.extend(similar)
-
-        # 2. Flagged labs
-        try:
-            stmt = (
-                select(LabResult)
-                .where(LabResult.is_flagged.is_(True))
-                .order_by(LabResult.created_at.desc())
-                .limit(5)
-            )
-            result = await db.execute(stmt)
-            flagged = result.scalars().all()
-            if flagged:
-                sections.append("\n=== Recent Flagged Lab Results ===")
-                for lab in flagged:
-                    ref = ""
-                    if lab.ref_range_low is not None and lab.ref_range_high is not None:
-                        ref = f" (ref: {lab.ref_range_low}–{lab.ref_range_high} {lab.unit})"
-                    sections.append(f"- {lab.test_name}: {lab.value} {lab.unit}{ref} ⚠️")
-        except Exception:
-            pass
-
-        # 3. BP 30-day avg
-        try:
-            stmt = text(
-                "SELECT AVG(systolic), AVG(diastolic) "
-                "FROM blood_pressure_readings "
-                "WHERE measured_at >= NOW() - INTERVAL '30 days'"
-            )
-            result = await db.execute(stmt)
-            row = result.fetchone()
-            if row and row[0]:
-                sections.append(
-                    f"\n=== Blood Pressure (30-day avg) ===\n"
-                    f"Systolic: {row[0]:.0f} mmHg, Diastolic: {row[1]:.0f} mmHg"
-                )
-        except Exception:
-            pass
-
-        # 4. Family history
-        try:
-            stmt = select(FamilyHistory)
-            result = await db.execute(stmt)
-            family = result.scalars().all()
-            if family:
-                sections.append("\n=== Family History ===")
-                for fh in family:
-                    onset = f", onset age {fh.age_of_onset}" if fh.age_of_onset else ""
-                    sections.append(f"- {fh.relation}: {fh.condition}{onset}")
-        except Exception:
-            pass
-
-        # 5. Samsung / Zepp Health Metrics
-        try:
-            # First, fetch latest weight and BMI (absolute latest)
-            stmt = (
-                select(SamsungHealthMetric)
-                .where(SamsungHealthMetric.metric_type.in_(["weight_kg", "bmi"]))
-                .order_by(SamsungHealthMetric.recorded_at.desc())
-                .limit(2)
-            )
-            result = await db.execute(stmt)
-            latest_w_bmi = result.scalars().all()
-            if latest_w_bmi:
-                sections.append("\n=== Latest Weight & BMI ===")
-                for m in latest_w_bmi:
-                    label = "Weight" if m.metric_type == "weight_kg" else "BMI"
-                    unit = "kg" if m.metric_type == "weight_kg" else ""
-                    date_str = m.recorded_at.strftime("%Y-%m-%d")
-                    sections.append(
-                        f"- {label}: {m.value:.1f}{unit} (recorded {date_str})"
-                    )
-
-            # Then, fetch summaries for the most recent 7 days of activity
-            # Get the distinct dates for the 7 most recent days with any data
-            stmt = (
-                select(func.date(SamsungHealthMetric.recorded_at))
-                .distinct()
-                .order_by(func.date(SamsungHealthMetric.recorded_at).desc())
-                .limit(7)
-            )
-            result = await db.execute(stmt)
-            recent_dates = [row[0] for row in result.fetchall()]
-
-            if recent_dates:
-                sections.append("\n=== Recent Activity Metrics ===")
-                for d in sorted(recent_dates, reverse=True):
-                    # Fetch all metrics for this date
-                    stmt = select(SamsungHealthMetric).where(
-                        func.date(SamsungHealthMetric.recorded_at) == d
-                    )
-                    result = await db.execute(stmt)
-                    metrics = result.scalars().all()
-
-                    m_list = []
-                    # Filter and format key metrics to keep context concise
-                    display_order = [
-                        "steps",
-                        "active_time_min",
-                        "active_calories",
-                        "resting_hr",
-                        "avg_spo2",
-                        "sleep_total_min",
-                        "avg_stress",
-                    ]
-                    m_dict = {m.metric_type: m.value for m in metrics}
-
-                    for key in display_order:
-                        if key in m_dict:
-                            val = m_dict[key]
-                            label = key.replace("_", " ").title()
-                            if "min" in key:
-                                m_list.append(f"{label}: {int(val)}m")
-                            elif "steps" in key:
-                                m_list.append(f"{label}: {int(val)}")
-                            elif "hr" in key or "spo2" in key or "stress" in key:
-                                m_list.append(f"{label}: {val:.1f}")
-                            else:
-                                m_list.append(f"{label}: {val:.1f}")
-
-                    if m_list:
-                        sections.append(f"- {d}: {', '.join(m_list)}")
-
-        except Exception:
-            pass
 
         return "\n".join(sections)
 

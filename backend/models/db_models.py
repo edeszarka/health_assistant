@@ -24,8 +24,13 @@ class UserProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     age = Column(Integer, nullable=False)
     sex = Column(String(10), nullable=False)  # "male" / "female" / "other"
+    height_cm = Column(Integer, nullable=True)
+    waist_cm = Column(Integer, nullable=True)
     smoking = Column(Boolean, default=False)
     bp_medication = Column(Boolean, default=False)
+    high_glucose_history = Column(Boolean, default=False)
+    vegetables_daily = Column(Boolean, default=False)
+    family_diabetes = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

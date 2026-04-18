@@ -31,7 +31,7 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
             try:
-                with httpx.Client(timeout=1200.0) as client:
+                with httpx.Client(timeout=1800.0) as client:
                     resp = client.post(
                         f"{BACKEND}/chat/",
                         json={"message": prompt, "conversation_history": history},
