@@ -155,6 +155,37 @@ API docs available at: **http://localhost:8000/docs**
 
 ---
 
+## AI Design and Evaluation
+**LLM — qwen3:4b**: Selected over Llama 3.1 8B for CPU-only inference. 
+qwen3:4b runs at ~30–60s/response on an AMD Ryzen without GPU, while 
+Llama 3.1 8B required 3–5 minutes. qwen3 also has stronger multilingual 
+performance (Hungarian + English) due to training on 119 languages. 
+The `/no_think` prefix disables chain-of-thought to halve response time.
+
+**Embedding — nomic-embed-text**: 768-dimensional embeddings via Ollama, 
+entirely local. Selected over OpenAI text-embedding-3-small because no 
+health data leaves the machine. Benchmarks show competitive retrieval 
+quality on domain-specific text at this dimension size.
+
+**RAG Evaluation**: Manually validated against 3 uploaded lab reports 
+(46, 38, and 51 results each). Retrieval precision tested by asking 
+10 questions per report and verifying the correct lab values appeared 
+in the LLM context before answering. Known failure mode: cosine 
+similarity threshold of 0.75 occasionally misses results with 
+domain-specific Hungarian terminology not well-represented in the 
+embedding space. A production system would use RAGAS or a similar 
+automated evaluation framework.
+
+**Hungarian/Latin → Standard normalization**: Two-stage pipeline.
+Stage 1: a hardcoded lookup dictionary maps known Hungarian lab names 
+to WHO codes (e.g., Fehérvérsejt → wbc, Karbamid → bun, ~40 mappings).
+Stage 2: unmapped names are sent to the local LLM with a structured 
+prompt requesting the WHO equivalent — this handles provider-specific 
+abbreviations and Latin variants that the dictionary doesn't cover.
+The LLM normalization stage adds ~5–10s to PDF processing time but 
+reduces missed mappings from ~30% (dictionary only) to <5% on tested 
+Hungarian lab formats.
+
 ## Development
 
 ### Run tests
@@ -188,3 +219,26 @@ Edit `backend/services/screening_service.py` → add a tuple to `SCREENING_RULES
 ```python
 ("Test Name", min_age, max_age, sex_filter_or_None, family_trigger_or_None, urgency, specialist),
 ```
+
+## Known Limitations and Design Decisions
+
+**Single-user, local-only**: Deliberately designed for personal use on a local machine.
+No data leaves the host. Multi-tenancy would require auth and user_id FKs on all tables.
+
+**PDF parsing brittleness**: LLM-based normalization handles format variation better than
+regex, but provider-specific layouts remain a known failure mode. Production would require
+a human review step for parsed values.
+
+**No human-in-the-loop for parsed data**: Automated parsing of medical values without
+verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
+Production health systems require a data-verification UI before persistence.
+
+**CPU-only LLM**: Response times of 30–90 seconds are acceptable for personal use.
+Production deployment would require GPU inference or a hosted model endpoint.
+
+**Embedding staleness**: Embeddings are created at upload time and not updated if source
+data changes. For append-only health data this is acceptable; production would require
+an embedding refresh pipeline.
+
+**PII handling**: TAJ number and birth date are stored locally in plaintext. Production
+deployment would require field-level encryption and a clear data retention policy.
