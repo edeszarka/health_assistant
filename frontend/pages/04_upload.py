@@ -7,7 +7,9 @@ BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 st.set_page_config(page_title="Upload", page_icon="📂", layout="wide")
 st.title("📂 Upload Medical Data")
 
-tab_pdf, tab_samsung, tab_zepp = st.tabs(["🗒️ Lab PDF", "📱 Samsung Health", "⌚ Zepp Life"])
+tab_pdf, tab_samsung, tab_zepp = st.tabs(
+    ["🗒️ Lab PDF", "📱 Samsung Health", "⌚ Zepp Life"]
+)
 
 
 def _mime(filename: str) -> str:
@@ -15,7 +17,7 @@ def _mime(filename: str) -> str:
     ext = filename.lower().rsplit(".", 1)[-1]
     return {
         "pdf": "application/pdf",
-        "zip": "application/octet-stream",   # most reliable for ZIP across all platforms
+        "zip": "application/octet-stream",
         "csv": "text/csv",
     }.get(ext, "application/octet-stream")
 
@@ -33,7 +35,9 @@ with tab_pdf:
             try:
                 resp = httpx.post(
                     f"{BACKEND}/upload/pdf",
-                    files={"file": (pdf_file.name, pdf_file.getvalue(), "application/pdf")},
+                    files={
+                        "file": (pdf_file.name, pdf_file.getvalue(), "application/pdf")
+                    },
                     timeout=1200.0,
                 )
                 resp.raise_for_status()
@@ -117,13 +121,14 @@ with tab_zepp:
 
     if zepp_files and st.button("Process Zepp Data", key="process_zepp"):
         if not zepp_password:
-            st.warning("⚠️ No password entered. If the ZIP is password-protected the upload will fail.")
+            st.warning(
+                "⚠️ No password entered. If the ZIP is password-protected the upload will fail."
+            )
 
         with st.spinner("Parsing Zepp Life data…"):
             try:
                 httpx_files = [
-                    ("files", (f.name, f.getvalue(), _mime(f.name)))
-                    for f in zepp_files
+                    ("files", (f.name, f.getvalue(), _mime(f.name))) for f in zepp_files
                 ]
                 data = {}
                 if zepp_password:

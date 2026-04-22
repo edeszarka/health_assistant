@@ -8,9 +8,17 @@ st.set_page_config(page_title="Family History", page_icon="🧬", layout="wide")
 st.title("🧬 Family Health History")
 
 RELATIONS = [
-    "mother", "father", "maternal_grandmother", "maternal_grandfather",
-    "paternal_grandmother", "paternal_grandfather", "sibling",
-    "aunt", "uncle", "child", "other",
+    "mother",
+    "father",
+    "maternal_grandmother",
+    "maternal_grandfather",
+    "paternal_grandmother",
+    "paternal_grandfather",
+    "sibling",
+    "aunt",
+    "uncle",
+    "child",
+    "other",
 ]
 
 # ── Add entry form ────────────────────────────────────────────────────────────
@@ -19,10 +27,14 @@ with st.form("fam_form"):
     c1, c2 = st.columns(2)
     with c1:
         relation = st.selectbox("Relative", RELATIONS)
-        condition = st.text_input("Medical Condition", placeholder="e.g. Type 2 Diabetes")
+        condition = st.text_input(
+            "Medical Condition", placeholder="e.g. Type 2 Diabetes"
+        )
     with c2:
         icd10 = st.text_input("ICD-10 Code (optional)", placeholder="e.g. E11")
-        age_onset = st.number_input("Age at Onset (optional)", min_value=0, max_value=120, value=0)
+        age_onset = st.number_input(
+            "Age at Onset (optional)", min_value=0, max_value=120, value=0
+        )
     notes = st.text_area("Notes (optional)")
     submitted = st.form_submit_button("➕ Add Record")
 

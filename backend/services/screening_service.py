@@ -1,4 +1,5 @@
 """Preventive screening recommendations using USPSTF guidelines."""
+
 from __future__ import annotations
 
 import json
@@ -16,15 +17,79 @@ from services.medlineplus_service import medlineplus_service
 SCREENING_RULES: list[tuple] = [
     ("Blood pressure screening", 18, 999, None, None, "routine", "GP"),
     ("Diabetes screening (HbA1c)", 35, 70, None, None, "routine", "GP"),
-    ("Diabetes screening (HbA1c)", 25, 34, None, ["diabetes"], "routine", "Endocrinologist"),
-    ("Lipid panel", 20, 999, None, ["cardiovascular disease", "heart attack"], "routine", "Cardiologist"),
-    ("Colorectal cancer screening", 45, 75, None, None, "routine", "Gastroenterologist"),
-    ("Cervical cancer screening (Pap smear)", 21, 65, "female", None, "routine", "Gynecologist"),
-    ("Breast cancer screening (mammogram)", 40, 74, "female", None, "routine", "Radiologist"),
-    ("Abdominal aortic aneurysm ultrasound", 65, 75, "male", None, "routine", "Vascular Surgeon"),
+    (
+        "Diabetes screening (HbA1c)",
+        25,
+        34,
+        None,
+        ["diabetes"],
+        "routine",
+        "Endocrinologist",
+    ),
+    (
+        "Lipid panel",
+        20,
+        999,
+        None,
+        ["cardiovascular disease", "heart attack"],
+        "routine",
+        "Cardiologist",
+    ),
+    (
+        "Colorectal cancer screening",
+        45,
+        75,
+        None,
+        None,
+        "routine",
+        "Gastroenterologist",
+    ),
+    (
+        "Cervical cancer screening (Pap smear)",
+        21,
+        65,
+        "female",
+        None,
+        "routine",
+        "Gynecologist",
+    ),
+    (
+        "Breast cancer screening (mammogram)",
+        40,
+        74,
+        "female",
+        None,
+        "routine",
+        "Radiologist",
+    ),
+    (
+        "Abdominal aortic aneurysm ultrasound",
+        65,
+        75,
+        "male",
+        None,
+        "routine",
+        "Vascular Surgeon",
+    ),
     ("Thyroid function (TSH)", 35, 999, "female", None, "routine", "Endocrinologist"),
-    ("Osteoporosis screening (DEXA)", 65, 999, "female", None, "routine", "Rheumatologist"),
-    ("Lung cancer screening (low-dose CT)", 50, 80, None, None, "routine", "Pulmonologist"),
+    (
+        "Osteoporosis screening (DEXA)",
+        65,
+        999,
+        "female",
+        None,
+        "routine",
+        "Rheumatologist",
+    ),
+    (
+        "Lung cancer screening (low-dose CT)",
+        50,
+        80,
+        None,
+        None,
+        "routine",
+        "Pulmonologist",
+    ),
 ]
 
 
@@ -37,7 +102,9 @@ class ScreeningService:
 
     def _load_guidelines(self) -> None:
         """Load USPSTF guidelines JSON at startup."""
-        guideline_path = Path(__file__).parents[2] / "data_sample" / "uspstf_guidelines.json"
+        guideline_path = (
+            Path(__file__).parents[2] / "data_sample" / "uspstf_guidelines.json"
+        )
         try:
             with open(guideline_path, "r", encoding="utf-8") as f:
                 self._guidelines = json.load(f)
@@ -72,7 +139,15 @@ class ScreeningService:
         seen: set[str] = set()
         fam_lower = [c.lower() for c in family_history_conditions]
 
-        for (condition, min_age, max_age, sex_filter, fam_trigger, urgency, specialist) in SCREENING_RULES:
+        for (
+            condition,
+            min_age,
+            max_age,
+            sex_filter,
+            fam_trigger,
+            urgency,
+            specialist,
+        ) in SCREENING_RULES:
             # Age filter
             if not (min_age <= age <= max_age):
                 continue
@@ -82,7 +157,9 @@ class ScreeningService:
             # Family history trigger
             if fam_trigger:
                 if not any(
-                    trigger.lower() in cond for trigger in fam_trigger for cond in fam_lower
+                    trigger.lower() in cond
+                    for trigger in fam_trigger
+                    for cond in fam_lower
                 ):
                     continue
 
@@ -138,7 +215,9 @@ class ScreeningService:
         return recs
 
     @staticmethod
-    def _build_reason(condition: str, age: int, sex: str, fam_conditions: list[str]) -> str:
+    def _build_reason(
+        condition: str, age: int, sex: str, fam_conditions: list[str]
+    ) -> str:
         """Compose a human-readable reason string."""
         fam_str = (
             f" Family history includes: {', '.join(fam_conditions[:3])}."

@@ -4,10 +4,11 @@ import json
 import re
 import traceback
 
+
 async def main():
     ollama_url = "http://ollama:11434/api/generate"
     model = "llama3.1:8b"
-    
+
     text = "WBC: 5.4 10^9/L, RBC: 4.8 10^12/L. Date: 2024-05-10"
     prompt = (
         "You are a medical data extraction assistant. "
@@ -40,11 +41,11 @@ async def main():
             resp.raise_for_status()
             raw = resp.json().get("response", "")
             print(f"RAW RESPONSE: {raw}")
-            
+
             # Simulate the parser cleaning
             cleaned = re.sub(r"```(?:json)?", "", raw).strip()
             cleaned = cleaned.rstrip("`").strip()
-            
+
             try:
                 data = json.loads(cleaned)
                 print(f"PARSED SUCCESS: {data}")
@@ -58,10 +59,11 @@ async def main():
                         print(f"PARSED FAIL: {e}")
                 else:
                     print("NO JSON ARRAY FOUND")
-                    
+
     except Exception as e:
         print(f"EXECUTION FAILED: {e}")
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

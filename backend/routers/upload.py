@@ -263,8 +263,8 @@ async def upload_zepp(
 
     await db.commit()
 
-    if stored > 0:
-        overall_summary = report.summary()
-        await rag_service.store_embedding("zepp_summary", None, overall_summary, db)
+    # if stored > 0:
+    #    overall_summary = report.summary()
+    #    await rag_service.store_embedding("zepp_summary", None, overall_summary, db)
 
     return {"filename": source_name, "metrics_extracted": len(report.daily_summaries()), "stored": stored}

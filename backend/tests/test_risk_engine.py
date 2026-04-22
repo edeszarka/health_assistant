@@ -52,7 +52,7 @@ def test_framingham_returns_required_keys(engine):
 def test_findrisc_low_score(engine):
     """Young, healthy, active person should score Low."""
     result = engine.calculate_findrisc(
-        age=28, bmi=22.0,
+        age=28, sex="male", waist_cm=85, bmi=22.0,
         physical_activity_mins_per_day=45,
         vegetables_daily=True,
         hypertension_medication=False,
@@ -66,7 +66,7 @@ def test_findrisc_low_score(engine):
 def test_findrisc_high_score(engine):
     """Older, obese, sedentary person with family history → Very High."""
     result = engine.calculate_findrisc(
-        age=67, bmi=33.0,
+        age=67, sex="female", waist_cm=95, bmi=33.0,
         physical_activity_mins_per_day=5,
         vegetables_daily=False,
         hypertension_medication=True,
@@ -79,7 +79,7 @@ def test_findrisc_high_score(engine):
 
 def test_findrisc_returns_required_keys(engine):
     result = engine.calculate_findrisc(
-        age=50, bmi=27.0,
+        age=50, sex="male", waist_cm=105, bmi=27.0,
         physical_activity_mins_per_day=20,
         vegetables_daily=True,
         hypertension_medication=False,

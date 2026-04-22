@@ -47,7 +47,9 @@ for urgency, label_cfg in URGENCY_CONFIG.items():
                 st.write(f"👨‍⚕️ Specialist: **{rec.get('specialist', 'GP')}**")
                 summary = rec.get("medlineplus_summary", "")
                 if summary:
-                    st.caption(f"ℹ️ {summary[:300]}…" if len(summary) > 300 else f"ℹ️ {summary}")
+                    st.caption(
+                        f"ℹ️ {summary[:300]}…" if len(summary) > 300 else f"ℹ️ {summary}"
+                    )
             with col2:
                 url = rec.get("medlineplus_url")
                 if url:

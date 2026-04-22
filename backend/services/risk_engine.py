@@ -1,4 +1,5 @@
 """Framingham and FINDRISC risk score calculators + AHA BP classification."""
+
 from __future__ import annotations
 
 
@@ -9,25 +10,43 @@ class RiskEngine:
 
     # Point tables: age points by sex
     _FRAMINGHAM_AGE_MALE = {
-        (20, 34): -9, (35, 39): -4, (40, 44): 0,
-        (45, 49): 3,  (50, 54): 6,  (55, 59): 8,
-        (60, 64): 10, (65, 69): 11, (70, 74): 12, (75, 999): 13,
+        (20, 34): -9,
+        (35, 39): -4,
+        (40, 44): 0,
+        (45, 49): 3,
+        (50, 54): 6,
+        (55, 59): 8,
+        (60, 64): 10,
+        (65, 69): 11,
+        (70, 74): 12,
+        (75, 999): 13,
     }
     _FRAMINGHAM_AGE_FEMALE = {
-        (20, 34): -7, (35, 39): -3, (40, 44): 0,
-        (45, 49): 3,  (50, 54): 6,  (55, 59): 8,
-        (60, 64): 10, (65, 69): 12, (70, 74): 14, (75, 999): 16,
+        (20, 34): -7,
+        (35, 39): -3,
+        (40, 44): 0,
+        (45, 49): 3,
+        (50, 54): 6,
+        (55, 59): 8,
+        (60, 64): 10,
+        (65, 69): 12,
+        (70, 74): 14,
+        (75, 999): 16,
     }
 
     # Total cholesterol by age group (points for <160, 160-199, 200-239, 240-279, ≥280)
     _FRAMINGHAM_TC_MALE = {
-        (20, 39): [0, 4, 7, 9, 11], (40, 49): [0, 3, 5, 6, 8],
-        (50, 59): [0, 2, 3, 4, 5],  (60, 69): [0, 1, 1, 2, 3],
+        (20, 39): [0, 4, 7, 9, 11],
+        (40, 49): [0, 3, 5, 6, 8],
+        (50, 59): [0, 2, 3, 4, 5],
+        (60, 69): [0, 1, 1, 2, 3],
         (70, 999): [0, 0, 0, 1, 1],
     }
     _FRAMINGHAM_TC_FEMALE = {
-        (20, 39): [0, 4, 8, 11, 13], (40, 49): [0, 3, 6, 8, 10],
-        (50, 59): [0, 2, 4, 5, 7],   (60, 69): [0, 1, 2, 3, 4],
+        (20, 39): [0, 4, 8, 11, 13],
+        (40, 49): [0, 3, 6, 8, 10],
+        (50, 59): [0, 2, 4, 5, 7],
+        (60, 69): [0, 1, 2, 3, 4],
         (70, 999): [0, 1, 1, 2, 2],
     }
 
@@ -36,32 +55,78 @@ class RiskEngine:
 
     # SBP points (treated vs untreated) for male/female
     _FRAMINGHAM_SBP_MALE_UNTREATED = {
-        (0, 119): 0, (120, 129): 0, (130, 139): 1,
-        (140, 159): 1, (160, 999): 2,
+        (0, 119): 0,
+        (120, 129): 0,
+        (130, 139): 1,
+        (140, 159): 1,
+        (160, 999): 2,
     }
     _FRAMINGHAM_SBP_MALE_TREATED = {
-        (0, 119): 0, (120, 129): 1, (130, 139): 2,
-        (140, 159): 2, (160, 999): 3,
+        (0, 119): 0,
+        (120, 129): 1,
+        (130, 139): 2,
+        (140, 159): 2,
+        (160, 999): 3,
     }
     _FRAMINGHAM_SBP_FEMALE_UNTREATED = {
-        (0, 119): 0, (120, 129): 1, (130, 139): 2,
-        (140, 159): 3, (160, 999): 4,
+        (0, 119): 0,
+        (120, 129): 1,
+        (130, 139): 2,
+        (140, 159): 3,
+        (160, 999): 4,
     }
     _FRAMINGHAM_SBP_FEMALE_TREATED = {
-        (0, 119): 0, (120, 129): 3, (130, 139): 4,
-        (140, 159): 5, (160, 999): 6,
+        (0, 119): 0,
+        (120, 129): 3,
+        (130, 139): 4,
+        (140, 159): 5,
+        (160, 999): 6,
     }
 
     # 10-year risk lookup tables (points → risk %)
     _FRAMINGHAM_RISK_MALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
+        -3: 1,
+        -2: 1,
+        -1: 1,
+        0: 1,
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 2,
+        6: 2,
+        7: 3,
+        8: 4,
+        9: 5,
+        10: 6,
+        11: 8,
+        12: 10,
+        13: 12,
+        14: 16,
+        15: 20,
+        16: 25,
     }
     _FRAMINGHAM_RISK_FEMALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
+        -3: 1,
+        -2: 1,
+        -1: 1,
+        0: 1,
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 2,
+        6: 2,
+        7: 3,
+        8: 4,
+        9: 5,
+        10: 6,
+        11: 8,
+        12: 10,
+        13: 12,
+        14: 16,
+        15: 20,
+        16: 25,
     }
 
     def calculate_framingham(
@@ -79,16 +144,19 @@ class RiskEngine:
 
         Args:
             age: Patient age in years.
-            sex: "male" or "female".
-            total_cholesterol: Total cholesterol in mg/dL.
-            hdl_cholesterol: HDL cholesterol in mg/dL.
-            systolic_bp: Systolic blood pressure in mmHg.
-            bp_treated: Whether the patient takes antihypertensive medication.
-            diabetes: Whether the patient has diabetes.
-            smoker: Whether the patient currently smokes.
+            sex: The biological sex of the patient ("male" or "female").
+            total_cholesterol: Total cholesterol level in mg/dL.
+            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL.
+            systolic_bp: Systolic blood pressure reading in mmHg.
+            bp_treated: True if the patient is on antihypertensive medication, False otherwise.
+            diabetes: True if the patient has a diagnosis of diabetes, False otherwise.
+            smoker: True if the patient is a current smoker, False otherwise.
 
         Returns:
-            Dict with score_points, risk_percent, risk_category.
+            A dictionary containing:
+                - score_points (int): The total calculated Framingham points.
+                - risk_percent (float): The estimated 10-year risk of a cardiovascular event.
+                - risk_category (str): A qualitative description of the risk level (e.g., "Low", "High").
         """
         male = sex.lower() == "male"
         points = 0
@@ -102,20 +170,25 @@ class RiskEngine:
         tc_pts_list = self._lookup_range(tc_table, age)
         if isinstance(tc_pts_list, list):
             tc_idx = (
-                0 if total_cholesterol < 160
-                else 1 if total_cholesterol < 200
-                else 2 if total_cholesterol < 240
-                else 3 if total_cholesterol < 280
-                else 4
+                0
+                if total_cholesterol < 160
+                else (
+                    1
+                    if total_cholesterol < 200
+                    else (
+                        2
+                        if total_cholesterol < 240
+                        else 3 if total_cholesterol < 280 else 4
+                    )
+                )
             )
             points += tc_pts_list[tc_idx]
 
         # HDL points
         hdl_idx = (
-            0 if hdl_cholesterol >= 60
-            else 1 if hdl_cholesterol >= 50
-            else 2 if hdl_cholesterol >= 40
-            else 3
+            0
+            if hdl_cholesterol >= 60
+            else 1 if hdl_cholesterol >= 50 else 2 if hdl_cholesterol >= 40 else 3
         )
         points += self._FRAMINGHAM_HDL[hdl_idx]
 
@@ -143,23 +216,31 @@ class RiskEngine:
             points += 11 if male else 13
 
         # Clamp to lookup range
-        risk_table = self._FRAMINGHAM_RISK_MALE if male else self._FRAMINGHAM_RISK_FEMALE
+        risk_table = (
+            self._FRAMINGHAM_RISK_MALE if male else self._FRAMINGHAM_RISK_FEMALE
+        )
         clamped = max(min(points, max(risk_table.keys())), min(risk_table.keys()))
         risk_pct = risk_table.get(clamped, 30)
 
         category = (
-            "Low (<10%)" if risk_pct < 10
-            else "Moderate (10-20%)" if risk_pct <= 20
-            else "High (>20%)"
+            "Low (<10%)"
+            if risk_pct < 10
+            else "Moderate (10-20%)" if risk_pct <= 20 else "High (>20%)"
         )
-        return {"score_points": points, "risk_percent": float(risk_pct), "risk_category": category}
+        return {
+            "score_points": points,
+            "risk_percent": float(risk_pct),
+            "risk_category": category,
+        }
 
     # ── FINDRISC ─────────────────────────────────────────────────────────────
 
     def calculate_findrisc(
         self,
         age: int,
-        bmi: float,
+        sex: str,
+        waist_cm: float | None,
+        bmi: float | None,
         physical_activity_mins_per_day: float,
         vegetables_daily: bool,
         hypertension_medication: bool,
@@ -171,7 +252,9 @@ class RiskEngine:
 
         Args:
             age: Patient age in years.
-            bmi: Body mass index.
+            sex: "male" or "female".
+            waist_cm: Waist circumference in cm (optional).
+            bmi: Body mass index (optional).
             physical_activity_mins_per_day: Average daily physical activity minutes.
             vegetables_daily: Whether the patient eats vegetables/fruit daily.
             hypertension_medication: Whether patient takes antihypertensive drugs.
@@ -194,12 +277,30 @@ class RiskEngine:
             score += 4
 
         # BMI
-        if bmi < 25:
-            score += 0
-        elif bmi <= 30:
-            score += 1
-        else:
-            score += 3
+        if bmi is not None:
+            if bmi < 25:
+                score += 0
+            elif bmi <= 30:
+                score += 1
+            else:
+                score += 3
+        
+        # Waist circumference
+        if waist_cm is not None:
+            if sex.lower() == "male":
+                if waist_cm < 94:
+                    score += 0
+                elif 94 <= waist_cm <= 102:
+                    score += 3
+                else:
+                    score += 4
+            else:
+                if waist_cm < 80:
+                    score += 0
+                elif 80 <= waist_cm <= 88:
+                    score += 3
+                else:
+                    score += 4
 
         # Physical activity (≥30 min/day most days → ≥30 * 5/7)
         if physical_activity_mins_per_day < 21:  # ~30min × 5/7 days

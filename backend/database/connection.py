@@ -14,6 +14,7 @@ AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
     """Declarative base for all ORM models."""
+
     pass
 
 
