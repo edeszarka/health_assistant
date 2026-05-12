@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import httpx
 
+from services.llm_service import llm_service, _detect_intent
 from config import settings
 
 
-_BASE_PROMPT = """
-You are a knowledgeable personal health assistant. Help the user understand their lab results,
+_BASE_PROMPT = """You are a knowledgeable personal health assistant. Help the user understand their lab results,
 health trends (including Samsung Health and Zepp Life), blood pressure readings, and preventive care needs.
 You handle text in Hungarian and English — always respond in the same language the user writes in.
 
@@ -46,38 +46,49 @@ Rules:
 
 
 _RISK_ANALYSIS_ADDENDUM = """
+
 For this risk analysis query, reason carefully step by step:
 1. Identify all relevant values from the user's data
 2. Note which direction each value trends and by how much
 3. Consider interactions between risk factors (e.g. high LDL + family CV history)
 4. Quantify uncertainty — flag if data is old or incomplete
-5. Only then summarize findings and recommendations
-"""
+5. Only then summarize findings and recommendations"""
+
+
+def _detect_intent(message: str) -> dict:
+    """Detect which data domains are relevant to the user's query.
+    
+    Used in chat.py to decide which context sections to fetch from DB.
+    Keyword-based — no LLM call needed.
+    """
+    msg = message.lower()
+    domains = set()
+
+    if any(w in msg for w in ["lépés", "steps", "walk", "aktivit", "kalória", "calorie", "sleep", "alvás", "hr", "pulzus", "szív"]):
+        domains.add("activity")
+    if any(w in msg for w in ["labor", "vérkép", "koleszterin", "lab", "blood", "glucose", "hba1c", "ferritin", "tsh"]):
+        domains.add("labs")
+    if any(w in msg for w in ["vérnyomás", "blood pressure", "bp", "szisztolés", "diastolic"]):
+        domains.add("bp")
+    if any(w in msg for w in ["család", "family", "history", "előzmény"]):
+        domains.add("family")
+    if not domains:
+        # General question — load everything
+        domains = {"activity", "labs", "bp", "family"}
+
+    return {"domains": domains}
 
 
 class LLMService:
-    """Sends chat requests to Ollama and returns the text reply."""
+    """Sends chat requests to Ollama and returns the text reply.
+
+    Responsibility: format the system prompt and call Ollama.
+    Never fetches data from the database — all context is passed in.
+    """
 
     def __init__(self) -> None:
         self._base_url = settings.ollama_base_url
         self._model = settings.ollama_model
-
-    def _detect_intent(message: str) -> dict:
-        msg = message.lower()
-        domains = set()
-        
-        if any(w in msg for w in ["lépés", "steps", "walk", "aktivit"]):
-            domains.add("activity")
-        if any(w in msg for w in ["labor", "vérkép", "koleszterin", "lab", "blood"]):
-            domains.add("labs")
-        if any(w in msg for w in ["vérnyomás", "blood pressure", "bp", "szisztolés"]):
-            domains.add("bp")
-        if any(w in msg for w in ["alvás", "sleep", "hr", "pulzus"]):
-            domains.add("activity")
-        if not domains:  # általános kérdés — mindent betölt
-            domains = {"activity", "labs", "bp", "family"}
-        
-        return {"domains": domains}
 
     async def chat(
         self,
@@ -87,6 +98,7 @@ class LLMService:
         user_profile: object | None = None,
         risk_scores: dict | None = None,
         query_type: str = "general",
+        user_language: str = "English",  # kept for chat.py compatibility
         health_metrics_summary: str = "",
         flagged_values: str = "",
         bp_summary: str = "",
@@ -101,6 +113,7 @@ class LLMService:
             user_profile: UserProfile ORM row or None.
             risk_scores: Dict with framingham and findrisc keys.
             query_type: "general" or "risk_analysis" (enables thinking mode).
+            user_language: Detected language — kept for API compatibility.
             health_metrics_summary: Pre-fetched Samsung/Zepp metrics as text.
             flagged_values: Pre-fetched out-of-range lab values as text.
             bp_summary: Pre-fetched blood pressure summary as text.
@@ -108,23 +121,22 @@ class LLMService:
 
         Returns:
             The assistant's reply as a plain string.
+
+        Raises:
+            RuntimeError: If the Ollama request fails.
         """
         profile = user_profile
         rs = risk_scores or {}
 
-        intent = _detect_intent(request.message)
-
-        metrics_summary = (
-            await _build_health_metrics_summary(db) 
-            if "activity" in intent["domains"] else ""
-        )
-        lab_summary = (
-            await _build_lab_trends_summary(db) 
-        if "labs" in intent["domains"] else ""
-        )
-
-        # Pick prompt template based on query type
-        template = _RISK_ANALYSIS_ADDENDUM if query_type == "risk_analysis" else _BASE_PROMPT
+        # Build prompt: addendum is appended only for risk_analysis queries.
+        # /no_think is placed in the user message (Qwen3-specific) to disable
+        # chain-of-thought for general queries — halves response time on CPU.
+        if query_type == "risk_analysis":
+            template = _BASE_PROMPT + _RISK_ANALYSIS_ADDENDUM
+            user_message = message
+        else:
+            template = _BASE_PROMPT
+            user_message = f"/no_think {message}"
 
         system_content = template.format(
             age=getattr(profile, "age", "Unknown"),
@@ -140,23 +152,30 @@ class LLMService:
             rag_context=context or "(No additional context available.)",
         )
 
-        messages = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": f"/no_think {message}"}
-        ]
+        messages = [{"role": "system", "content": system_content}]
+        for entry in conversation_history:
+            messages.append(entry)
+        messages.append({"role": "user", "content": user_message})
+
+        # num_predict caps the OUTPUT length (tokens to generate).
+        # Keep this low on CPU — 512 tokens ≈ 350-400 words, plenty for health answers.
+        # num_ctx caps the INPUT context window processed during prefill.
+        # Default is 32k+ on Qwen3 which is very slow on CPU; 4096 covers our prompts.
+        num_predict = 768 if query_type == "risk_analysis" else 512
 
         payload = {
             "model": self._model,
             "messages": messages,
-            "stream": True,
+            "stream": False,  # streaming requires router-level changes (StreamingResponse)
             "options": {
-                "num_predict": 4096,
+                "num_predict": num_predict,
                 "num_ctx": 4096,
-            }
+            },
         }
 
+        timeout = 1800.0 if query_type == "risk_analysis" else 1000.0
         try:
-            async with httpx.AsyncClient(timeout=1000.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
                     f"{self._base_url}/api/chat",
                     json=payload,
