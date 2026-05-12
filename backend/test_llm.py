@@ -27,7 +27,7 @@ async def main():
         )
 
         payload = {
-            "model": "llama3.2", # we need to check config.py for model name, I will just use llama3.2
+            "model": "qwen3:4b",
             "prompt": prompt,
             "stream": False,
         }

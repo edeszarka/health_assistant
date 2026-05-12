@@ -6,7 +6,7 @@ import traceback
 
 async def main():
     ollama_url = "http://ollama:11434/api/generate"
-    model = "llama3.1:8b"
+    model = "qwen3:4b"
     
     text = "WBC: 5.4 10^9/L, RBC: 4.8 10^12/L. Date: 2024-05-10"
     prompt = (
