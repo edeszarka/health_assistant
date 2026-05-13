@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
@@ -77,8 +77,7 @@ def _detect_language(message: str) -> str:
 async def _build_health_metrics_summary(db: AsyncSession) -> str:
     """Build a summary of activity and biometric numbers from Samsung Health and Zepp.
 
-    Covers last 7 days detail, 30-day averages, 18-month top days,
-    monthly step averages, HR, sleep, weight, and calories.
+    Covers last 7 days detail, 30-day averages, weight, and calories.
 
     Args:
         db: Async database session.
@@ -90,7 +89,6 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
     today   = date.today()
     last_7  = today - timedelta(days=7)
     last_30 = today - timedelta(days=30)
-    last_18m = today - timedelta(days=548)
 
     try:
         # Steps — last 7 days
@@ -122,77 +120,6 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
             max_date = max_day.recorded_at.date() if hasattr(max_day.recorded_at, "date") else max_day.recorded_at
             lines.append(f"  30-day average: {int(avg_30):,} steps/day")
             lines.append(f"  30-day peak: {int(max_day.value):,} steps (on {max_date})")
-
-        # Steps — top 10 days in 18 months
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_18m)
-            .order_by(SamsungHealthMetric.value.desc())
-            .limit(10)
-        )
-        top_rows = result.scalars().all()
-        if top_rows:
-            lines.append("\n=== Top 10 Step Days (last 18 months) ===")
-            for row in top_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, "date") else row.recorded_at
-                lines.append(f"  {d}: {int(row.value):,} steps")
-
-        # Steps — monthly averages 18 months
-        month_col = func.date_trunc("month", SamsungHealthMetric.recorded_at)
-        result = await db.execute(
-            select(
-                month_col.label("month"),
-                func.avg(SamsungHealthMetric.value).label("avg_steps"),
-                func.max(SamsungHealthMetric.value).label("max_steps"),
-                func.count(SamsungHealthMetric.value).label("day_count"),
-            )
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_18m)
-            .group_by(month_col)
-            .order_by(month_col)
-        )
-        monthly_rows = result.all()
-        if monthly_rows:
-            lines.append("\n=== Monthly Step Averages (last 18 months) ===")
-            for row in monthly_rows:
-                month_str = row.month.strftime("%Y-%m") if hasattr(row.month, "strftime") else str(row.month)[:7]
-                lines.append(
-                    f"  {month_str}: {int(row.avg_steps):,} avg/day "
-                    f"(best: {int(row.max_steps):,}, {row.day_count} days)"
-                )
-
-        # Resting HR — last 30 days
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "resting_hr")
-            .where(SamsungHealthMetric.recorded_at >= last_30)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-        )
-        hr_rows = result.scalars().all()
-        if hr_rows:
-            avg_hr = sum(r.value for r in hr_rows) / len(hr_rows)
-            latest_hr = hr_rows[0]
-            d = latest_hr.recorded_at.date() if hasattr(latest_hr.recorded_at, "date") else latest_hr.recorded_at
-            lines.append("\n=== Resting Heart Rate (last 30 days) ===")
-            lines.append(f"  Latest: {int(latest_hr.value)} bpm (on {d})")
-            lines.append(f"  30-day average: {avg_hr:.1f} bpm")
-
-        # Sleep — last 7 days
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "sleep_total_min")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-        )
-        sleep_rows = result.scalars().all()
-        if sleep_rows:
-            lines.append("\n=== Sleep (last 7 days) ===")
-            for row in sleep_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, "date") else row.recorded_at
-                lines.append(f"  {d}: {row.value / 60:.1f} hours")
-            avg_sleep = sum(r.value for r in sleep_rows) / len(sleep_rows) / 60
-            lines.append(f"  7-day average: {avg_sleep:.1f} hours/night")
 
         # Weight — latest only
         result = await db.execute(
