@@ -1,6 +1,7 @@
 """Chat router: RAG-augmented LLM conversation with direct DB data injection."""
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from typing import Optional, Dict, Any
 
@@ -73,114 +74,37 @@ def _detect_intent(message: str) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _build_health_metrics_summary(db: AsyncSession) -> str:
-    """Query samsung_health_metrics and return a plain-text summary."""
+    """Query samsung_health_metrics and return a VERY brief plain-text summary."""
     lines = []
     today = date.today()
-    last_7  = today - timedelta(days=7)
-    last_30 = today - timedelta(days=30)
+    last_3  = today - timedelta(days=3)
 
     try:
-        # Steps: last 7 days
+        # Steps: last 3 days only
         result = await db.execute(
             select(SamsungHealthMetric)
             .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
+            .where(SamsungHealthMetric.recorded_at >= last_3)
             .order_by(SamsungHealthMetric.recorded_at.desc())
         )
         step_rows = result.scalars().all()
         if step_rows:
-            lines.append("=== Steps (last 7 days) ===")
+            lines.append("=== Recent Steps ===")
             for row in step_rows:
                 d = row.recorded_at.date() if hasattr(row.recorded_at, "date") else row.recorded_at
                 lines.append(f"  {d}: {int(row.value):,} steps")
-            avg_7 = sum(r.value for r in step_rows) / len(step_rows)
-            lines.append(f"  7-day average: {int(avg_7):,} steps/day")
 
-        # Steps: last 30 days
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_30)
-        )
-        step_30 = result.scalars().all()
-        if step_30:
-            avg_30 = sum(r.value for r in step_30) / len(step_30)
-            max_day = max(step_30, key=lambda r: r.value)
-            max_date = max_day.recorded_at.date() if hasattr(max_day.recorded_at, "date") else max_day.recorded_at
-            lines.append(f"  30-day average: {int(avg_30):,} steps/day")
-            lines.append(f"  30-day maximum: {int(max_day.value):,} steps (on {max_date})")
-
-        # Steps: top 10 days in last 18 months
-        last_18m = today - timedelta(days=548)
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_18m)
-            .order_by(SamsungHealthMetric.value.desc())
-            .limit(10)
-        )
-        top_rows = result.scalars().all()
-        if top_rows:
-            lines.append("\n=== Top 10 Step Days (last 18 months) ===")
-            for row in top_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, "date") else row.recorded_at
-                lines.append(f"  {d}: {int(row.value):,} steps")
-
-        # Steps: monthly averages for last 18 months
-        month_col = func.date_trunc("month", SamsungHealthMetric.recorded_at)
-        result = await db.execute(
-            select(
-                month_col.label("month"),
-                func.avg(SamsungHealthMetric.value).label("avg_steps"),
-                func.max(SamsungHealthMetric.value).label("max_steps"),
-                func.count(SamsungHealthMetric.value).label("day_count"),
-            )
-            .where(SamsungHealthMetric.metric_type == "steps")
-            .where(SamsungHealthMetric.recorded_at >= last_18m)
-            .group_by(month_col)
-            .order_by(month_col)
-        )
-        monthly_rows = result.all()
-        if monthly_rows:
-            lines.append("\n=== Monthly Step Averages (last 18 months) ===")
-            for row in monthly_rows:
-                month_str = row.month.strftime("%Y-%m") if hasattr(row.month, "strftime") else str(row.month)[:7]
-                lines.append(
-                    f"  {month_str}: {int(row.avg_steps):,} avg steps/day "
-                    f"(best day: {int(row.max_steps):,}, data from {row.day_count} days)"
-                )
-
-        # Resting heart rate: last 30 days
+        # Resting heart rate: latest only
         result = await db.execute(
             select(SamsungHealthMetric)
             .where(SamsungHealthMetric.metric_type == "resting_hr")
-            .where(SamsungHealthMetric.recorded_at >= last_30)
             .order_by(SamsungHealthMetric.recorded_at.desc())
+            .limit(1)
         )
-        hr_rows = result.scalars().all()
-        if hr_rows:
-            avg_hr = sum(r.value for r in hr_rows) / len(hr_rows)
-            latest_hr = hr_rows[0]
+        latest_hr = result.scalar_one_or_none()
+        if latest_hr:
             d = latest_hr.recorded_at.date() if hasattr(latest_hr.recorded_at, "date") else latest_hr.recorded_at
-            lines.append("\n=== Resting Heart Rate (last 30 days) ===")
-            lines.append(f"  Latest: {int(latest_hr.value)} bpm (on {d})")
-            lines.append(f"  30-day average: {avg_hr:.1f} bpm")
-
-        # Sleep: last 7 days
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "sleep_total_min")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-            .order_by(SamsungHealthMetric.recorded_at.desc())
-        )
-        sleep_rows = result.scalars().all()
-        if sleep_rows:
-            lines.append("\n=== Sleep (last 7 days) ===")
-            for row in sleep_rows:
-                d = row.recorded_at.date() if hasattr(row.recorded_at, "date") else row.recorded_at
-                lines.append(f"  {d}: {row.value / 60:.1f} hours")
-            avg_sleep = sum(r.value for r in sleep_rows) / len(sleep_rows) / 60
-            lines.append(f"  7-day average: {avg_sleep:.1f} hours/night")
+            lines.append(f"\nLatest HR: {int(latest_hr.value)} bpm ({d})")
 
         # Weight: latest only
         result = await db.execute(
@@ -191,96 +115,49 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
         )
         weight = result.scalar_one_or_none()
         if weight:
-            lines.append(f"\n=== Weight ===")
-            lines.append(f"  Latest: {weight.value} kg")
-
-        # Active calories: last 7 days
-        result = await db.execute(
-            select(SamsungHealthMetric)
-            .where(SamsungHealthMetric.metric_type == "active_calories")
-            .where(SamsungHealthMetric.recorded_at >= last_7)
-        )
-        cal_rows = result.scalars().all()
-        if cal_rows:
-            avg_cal = sum(r.value for r in cal_rows) / len(cal_rows)
-            lines.append(f"\n=== Active Calories (last 7 days avg) ===")
-            lines.append(f"  Average: {int(avg_cal)} kcal/day")
+            lines.append(f"Latest Weight: {weight.value} kg")
 
     except Exception as e:
-        lines.append(f"(Error fetching Samsung metrics: {e})")
+        lines.append(f"(Error: {e})")
 
-    return "\n".join(lines) if lines else "No Samsung Health data available."
+    return "\n".join(lines) if lines else "No recent wearable data."
 
 
 async def _build_lab_flags_summary(db: AsyncSession) -> str:
-    """Fetch recent out-of-range lab results.
-
-    Note: LabResult has no flag_direction column — direction is derived
-    by comparing value against ref_range_low / ref_range_high.
-    """
+    """Fetch only the 3 most recent out-of-range lab results."""
     try:
         result = await db.execute(
             select(LabResult)
             .where(LabResult.is_flagged == True)
             .order_by(LabResult.test_date.desc())
-            .limit(10)
+            .limit(3)
         )
         flagged = result.scalars().all()
         if not flagged:
-            return "No flagged lab values on record."
+            return "No flagged lab values."
 
         lines = []
         for r in flagged:
-            # Derive direction from reference range — no flag_direction column in model
-            if r.ref_range_high is not None and r.value > r.ref_range_high:
-                direction = "HIGH ↑"
-            elif r.ref_range_low is not None and r.value < r.ref_range_low:
-                direction = "LOW ↓"
-            else:
-                direction = "OUT OF RANGE"
-
-            ref_str = (
-                f"{r.ref_range_low}–{r.ref_range_high}"
-                if r.ref_range_low is not None and r.ref_range_high is not None
-                else "N/A"
-            )
-            lines.append(
-                f"  {r.test_date}: {r.raw_name} = {r.value} {r.unit or ''} "
-                f"(ref: {ref_str}) [{direction}]"
-            )
+            lines.append(f"  {r.test_date}: {r.raw_name} {r.value} {r.unit or ''} (Flagged)")
         return "\n".join(lines)
     except Exception as e:
-        return f"(Error fetching lab flags: {e})"
+        return f"(Error: {e})"
 
 
 async def _build_bp_summary(db: AsyncSession) -> str:
-    """Fetch 30-day blood pressure average and latest reading."""
+    """Fetch ONLY latest blood pressure reading."""
     try:
-        last_30 = date.today() - timedelta(days=30)
         result = await db.execute(
             select(BloodPressureReading)
-            .where(BloodPressureReading.measured_at >= last_30)
             .order_by(BloodPressureReading.measured_at.desc())
+            .limit(1)
         )
-        readings = result.scalars().all()
-        if not readings:
-            return "No blood pressure readings in last 30 days."
-
-        avg_sys   = sum(r.systolic  for r in readings) / len(readings)
-        avg_dia   = sum(r.diastolic for r in readings) / len(readings)
-        # pulse may be None
-        pulse_vals = [r.pulse for r in readings if r.pulse is not None]
-        avg_pulse_str = f", pulse {sum(pulse_vals)/len(pulse_vals):.0f} bpm" if pulse_vals else ""
-        latest = readings[0]
-        pulse_str = f", pulse {latest.pulse} bpm" if latest.pulse else ""
-        return (
-            f"Latest: {latest.systolic}/{latest.diastolic} mmHg{pulse_str} "
-            f"({latest.measured_at.date()})\n"
-            f"30-day average: {avg_sys:.0f}/{avg_dia:.0f} mmHg{avg_pulse_str} "
-            f"({len(readings)} readings)"
-        )
+        latest = result.scalar_one_or_none()
+        if not latest:
+            return "No BP data."
+        return f"Latest BP: {latest.systolic}/{latest.diastolic} mmHg ({latest.measured_at.date()})"
     except Exception as e:
-        return f"(Error fetching BP data: {e})"
+        return f"(Error: {e})"
 
 
 async def _build_family_history_summary(db: AsyncSession) -> str:
@@ -300,57 +177,23 @@ async def _build_family_history_summary(db: AsyncSession) -> str:
         return f"(Error fetching family history: {e})"
 
 
+from services.risk_service import risk_service
+
 async def _build_risk_scores(
     db: AsyncSession,
-    profile: Optional[UserProfile],
-    user_message: str = "",
 ) -> Dict[str, Any]:
-    """Fetch stored Framingham and calculate FINDRISC risk scores."""
-    scores: Dict[str, Any] = {}
+    """Recalculate and return the latest Framingham and FINDRISC scores."""
     try:
-        # FINDRISC — calculated from profile fields
-        if profile:
-            weight_result = await db.execute(
-                select(SamsungHealthMetric.value)
-                .where(SamsungHealthMetric.metric_type == "weight_kg")
-                .order_by(SamsungHealthMetric.recorded_at.desc())
-                .limit(1)
-            )
-            weight_kg = weight_result.scalar_one_or_none()
-            bmi = None
-            if weight_kg and profile.height_cm:
-                bmi = float(weight_kg) / ((profile.height_cm / 100) ** 2)
-
-            fam_diabetes = "first_degree" if getattr(profile, "family_diabetes", False) else "none"
-            findrisc = risk_engine.calculate_findrisc(
-                age=profile.age,
-                sex=profile.sex,
-                waist_cm=getattr(profile, "waist_cm", None),
-                bmi=bmi,
-                physical_activity_mins_per_day=30.0,
-                vegetables_daily=getattr(profile, "vegetables_daily", False),
-                hypertension_medication=getattr(profile, "bp_medication", False),
-                high_glucose_history=getattr(profile, "high_glucose_history", False),
-                family_history_diabetes=fam_diabetes,
-            )
-            scores["findrisc_score"] = findrisc["score"]
-            scores["findrisc_category"] = findrisc["risk_category"]
-
-        # Framingham — read latest stored value from risk_scores table
-        fram_result = await db.execute(
-            select(RiskScore)
-            .where(RiskScore.score_type == "framingham")
-            .order_by(RiskScore.calculated_at.desc())
-            .limit(1)
-        )
-        rs_fram = fram_result.scalar_one_or_none()
-        if rs_fram:
-            scores["framingham_risk_percent"] = rs_fram.score_value
-
+        results = await risk_service.calculate_and_save_all(db)
+        scores = {}
+        if "framingham" in results:
+            scores["framingham_risk_percent"] = results["framingham"]["risk_percent"]
+        if "findrisc" in results:
+            scores["findrisc_score"] = results["findrisc"]["score"]
+        return scores
     except Exception as e:
-        print(f"Error calculating risk scores: {e}")
-
-    return scores
+        print(f"Error calculating risk scores in chat: {e}")
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -363,11 +206,6 @@ async def chat(
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
     """Accept a user message, build full context from DB, return LLM reply.
-
-    Architecture:
-    - chat.py    → structured data (SQL): labs, metrics, BP, family history
-    - rag_service → unstructured knowledge (vector search): medical context
-    - llm_service → receives both, reasons over them, never fetches data itself
 
     Args:
         request: The ChatRequest containing message and history.
@@ -409,7 +247,7 @@ async def chat(
     query_type = getattr(request, "query_type", "general")
     risk_scores: Dict[str, Any] = {}
     if "labs" in domains or "bp" in domains or query_type == "risk_analysis":
-        risk_scores = await _build_risk_scores(db, profile, request.message)
+        risk_scores = await _build_risk_scores(db)
 
     # 5. RAG — skip for pure activity questions (vector store has guidelines, not steps)
     rag_context = ""
@@ -419,10 +257,7 @@ async def chat(
         except Exception as exc:
             rag_context = f"(Medical knowledge retrieval unavailable: {exc})"
 
-    # 6. Detect language
-    user_language = _detect_language(request.message)
-
-    # 7. Call LLM
+    # 6. Call LLM
     try:
         reply = await llm_service.chat(
             message=request.message,
@@ -431,7 +266,6 @@ async def chat(
             user_profile=profile,
             risk_scores=risk_scores,
             query_type=query_type,
-            user_language=user_language,
             health_metrics_summary=metrics_summary,
             flagged_values=lab_summary,
             bp_summary=bp_summary,

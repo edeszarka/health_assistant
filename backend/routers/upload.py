@@ -18,6 +18,7 @@ from ingestion.samsung_parser import SamsungHealthParser
 from ingestion.zepp_parser import ZeppParser
 from models.db_models import LabResult, SamsungHealthMetric
 from services.rag_service import rag_service
+from services.risk_service import risk_service
 
 router = APIRouter()
 pdf_parser = PDFParser()
@@ -97,6 +98,11 @@ async def upload_pdf(
             continue
 
     await db.commit()
+    try:
+        await risk_service.calculate_and_save_all(db)
+    except Exception as e:
+        print(f"Error recalculating risk scores after PDF upload: {e}")
+
     print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {file.filename}")
     return {"filename": file.filename, "extracted": len(report.results), "stored": stored}
 
@@ -176,6 +182,10 @@ async def upload_samsung(
             continue
 
     await db.commit()
+    try:
+        await risk_service.calculate_and_save_all(db)
+    except Exception as e:
+        print(f"Error recalculating risk scores after upload: {e}")
 
     if stored > 0:
         overall_summary = report.summary()
@@ -262,6 +272,10 @@ async def upload_zepp(
             continue
 
     await db.commit()
+    try:
+        await risk_service.calculate_and_save_all(db)
+    except Exception as e:
+        print(f"Error recalculating risk scores after upload: {e}")
 
     if stored > 0:
         overall_summary = report.summary()

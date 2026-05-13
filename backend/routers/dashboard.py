@@ -9,6 +9,7 @@ from database.connection import get_db
 from models.api_models import DashboardSummary, LabResultResponse, BPSummaryResponse
 from models.db_models import LabResult, RiskScore
 from routers.blood_pressure import bp_summary
+from services.risk_service import risk_service
 
 router = APIRouter()
 
@@ -20,6 +21,12 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
     Args:
         db: Async DB session.
     """
+    # Recalculate risk scores first to ensure latest data is used
+    try:
+        await risk_service.calculate_and_save_all(db)
+    except Exception as e:
+        print(f"Error recalculating risk scores on dashboard: {e}")
+
     # Latest 10 lab results
     stmt = (
         select(LabResult)

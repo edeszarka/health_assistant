@@ -58,7 +58,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant
       SYNC_DATABASE_URL: postgresql+psycopg2://healthuser:${POSTGRES_PASSWORD}@postgres/healthassistant
       OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: qwen3:4b
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
       EMBED_MODEL: nomic-embed-text
       EMBED_DIMENSIONS: 768
     ports:
