@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -99,6 +100,10 @@ class SamsungHealthMetric(Base):
     recorded_at = Column(DateTime(timezone=True), nullable=False)
     source_file = Column(String(256))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("metric_type", "recorded_at", name="uix_metric_type_recorded_at"),
+    )
 
 
 class Embedding(Base):

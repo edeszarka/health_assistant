@@ -9,6 +9,7 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database.connection import get_db
 from config import settings
@@ -161,16 +162,23 @@ async def upload_samsung(
                 "water_ml": ds.get("water_ml"),
                 "weight_kg": ds.get("weight_kg"),
                 "bmi": ds.get("bmi"),
+                "heart_rate": ds.get("heart_rate"),
+                "sleep_minutes": ds.get("sleep_minutes"),
             }
             
             for m_type, m_val in metrics_to_store.items():
                 if m_val is not None:
-                    db.add(SamsungHealthMetric(
+                    stmt = pg_insert(SamsungHealthMetric).values(
                         metric_type=m_type,
                         value=float(m_val),
                         recorded_at=record_date,
                         source_file=source_name
-                    ))
+                    )
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["metric_type", "recorded_at"],
+                        set_={"value": stmt.excluded.value, "source_file": stmt.excluded.source_file}
+                    )
+                    await db.execute(stmt)
                     stored += 1
         except Exception:
             continue
@@ -251,12 +259,17 @@ async def upload_zepp(
             
             for m_type, m_val in metrics_to_store.items():
                 if m_val is not None:
-                    db.add(SamsungHealthMetric(
+                    stmt = pg_insert(SamsungHealthMetric).values(
                         metric_type=m_type,
                         value=float(m_val),
                         recorded_at=record_date,
                         source_file=source_name
-                    ))
+                    )
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["metric_type", "recorded_at"],
+                        set_={"value": stmt.excluded.value, "source_file": stmt.excluded.source_file}
+                    )
+                    await db.execute(stmt)
                     stored += 1
         except Exception:
             continue
