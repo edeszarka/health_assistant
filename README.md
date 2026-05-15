@@ -41,7 +41,7 @@
 - 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); LLM extracts and normalises lab values
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
-- 📱 **Samsung Health Import** – Parse ZIP exports for steps, sleep, heart rate, and body metrics (handles subfolder exports and prevents duplicates)
+- 📱 **Samsung Health Import** – Robust ZIP parser for steps, sleep, heart rate, and body metrics; handles subfolder exports, prevents duplicates, and includes detailed logging for troubleshooting.
 - ⌚ **Zepp Life Import** – Support for Zepp Life ZIP data (includes AES-encrypted file support)
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
@@ -189,10 +189,15 @@ Hungarian lab formats.
 
 ## Development
 
+> 💡 **Developer Tip**: The Docker setup includes volume mounts for `backend/` and `frontend/`. Changes made locally are reflected immediately inside the containers (hot-reloading), allowing for seamless testing without rebuilding images.
+
 ### Run tests
 ```bash
+# Inside the backend container (Recommended)
+docker exec health_assistant-backend-1 pytest tests/ -v
+
+# Locally (requires dependencies)
 cd backend
-pip install -r requirements.txt
 pytest tests/ -v
 ```
 
@@ -216,9 +221,9 @@ alembic upgrade head
 ```
 
 ### Add a new screening rule
-Edit `backend/services/screening_service.py` → add a tuple to `SCREENING_RULES`:
+Edit `backend/services/screening_service.py` → add a `ScreeningRule` to `SCREENING_RULES`:
 ```python
-("Test Name", min_age, max_age, sex_filter_or_None, family_trigger_or_None, urgency, specialist),
+ScreeningRule("Test Name", min_age, max_age, sex_filter=..., family_trigger=..., urgency="...", specialist="..."),
 ```
 
 ## Known Limitations and Design Decisions
