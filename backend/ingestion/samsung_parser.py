@@ -109,11 +109,20 @@ class SamsungHealthParser:
     # ── Private parsers ──────────────────────────────────────────────────────
 
     def _parse_steps(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Extract steps, distance, and active calories from CSV content.
+        
+        Args:
+            content: Raw CSV bytes.
+            source: Name of the source file.
+            
+        Returns:
+            List of SamsungMetricRaw objects.
+        """
         metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
             for row in rows:
-                # Handle both epoch and string dates
+                # Samsung uses multiple column variants for the same data
                 ts = self._parse_date(self._get_val(row, ["day_time", "start_time"]))
                 count = self._get_val(row, ["count", "step_count"])
                 dist = self._get_val(row, ["distance"])
@@ -126,11 +135,12 @@ class SamsungHealthParser:
                         metrics.append(SamsungMetricRaw("distance_m", float(dist), ts, source))
                     if cal is not None:
                         metrics.append(SamsungMetricRaw("active_calories", float(cal), ts, source))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Failed to parse steps from {source}: {exc}")
         return metrics
 
     def _parse_sleep(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Extract sleep duration metrics."""
         metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
@@ -140,11 +150,12 @@ class SamsungHealthParser:
                 if ts and dur is not None:
                     minutes = self._duration_to_minutes(str(dur))
                     metrics.append(SamsungMetricRaw("sleep_minutes", minutes, ts, source))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Failed to parse sleep from {source}: {exc}")
         return metrics
 
     def _parse_heart_rate(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Extract heart rate (BPM) metrics."""
         metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
@@ -153,11 +164,12 @@ class SamsungHealthParser:
                 val = self._get_val(row, ["heart_rate", "bpm", "avg"])
                 if ts and val is not None:
                     metrics.append(SamsungMetricRaw("heart_rate", float(val), ts, source))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Failed to parse heart rate from {source}: {exc}")
         return metrics
 
     def _parse_body(self, content: bytes, source: str) -> List[SamsungMetricRaw]:
+        """Extract body weight and BMI metrics."""
         metrics: List[SamsungMetricRaw] = []
         try:
             rows = self._read_csv(content)
@@ -170,8 +182,8 @@ class SamsungHealthParser:
                         metrics.append(SamsungMetricRaw("weight_kg", float(weight), ts, source))
                     if bmi is not None:
                         metrics.append(SamsungMetricRaw("bmi", float(bmi), ts, source))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Failed to parse body metrics from {source}: {exc}")
         return metrics
 
     # ── Utilities ────────────────────────────────────────────────────────────
