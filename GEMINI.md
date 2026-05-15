@@ -6,7 +6,7 @@ This project is a local-first personal health intelligence assistant that uses A
 - **Architecture**: Microservices-based with a FastAPI backend, Streamlit frontend, and PostgreSQL (with pgvector) database.
 - **Core Technologies**:
     - **Backend**: Python 3.12, FastAPI, SQLAlchemy (Async), Alembic, Pydantic v2.
-    - **AI/LLM**: LangChain, Ollama (qwen3:4b for chat, nomic-embed-text for embeddings).
+    - **AI/LLM**: LangChain, Ollama (llama3.2:3b for chat, nomic-embed-text for embeddings).
     - **Frontend**: Streamlit, Pandas, Plotly.
     - **Database**: PostgreSQL 16 + `pgvector` for semantic search/RAG.
     - **Parsing**: `pdfplumber` (Labs), `pyzipper` (Zepp Life), custom Samsung Health parsers.

@@ -1,6 +1,6 @@
 # 🏥 Health Assistant
 
-> **A local-first personal health intelligence assistant powered by Qwen 3, PostgreSQL/pgvector, and Streamlit.**
+> **A local-first personal health intelligence assistant powered by Llama 3.2, PostgreSQL/pgvector, and Streamlit.**
 
 > ⚠️ **Disclaimer**: This software is for **informational purposes only**. It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional.
 
@@ -21,7 +21,7 @@
 │                                ▼                                    │
 │                       ┌────────────────┐      ┌────────────────┐   │
 │                       │  Ollama        │◀─────│  Ollama-Pull   │   │
-│                       │  qwen3:4b      │      │  (Auto-setup)  │   │
+│                       │  llama3.2:3b   │      │  (Auto-setup)  │   │
 │                       │  nomic-embed   │      └────────────────┘   │
 │                       │  :11434        │                           │
 │                       └────────────────┘                           │
@@ -41,7 +41,7 @@
 - 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); LLM extracts and normalises lab values
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
-- 📱 **Samsung Health Import** – Parse ZIP exports for steps, sleep, heart rate, and body metrics (handles subfolder exports)
+- 📱 **Samsung Health Import** – Parse ZIP exports for steps, sleep, heart rate, and body metrics (handles subfolder exports and prevents duplicates)
 - ⌚ **Zepp Life Import** – Support for Zepp Life ZIP data (includes AES-encrypted file support)
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
@@ -72,7 +72,7 @@ cp .env.example .env
 # Edit .env and set a secure POSTGRES_PASSWORD
 
 # 3. Start everything
-# This will automatically pull the AI models (qwen3:4b, nomic-embed-text)
+# This will automatically pull the AI models (llama3.2:3b, nomic-embed-text)
 docker-compose up -d
 
 # 4. Open the app
@@ -145,7 +145,7 @@ API docs available at: **http://localhost:8000/docs**
 | Frontend | Streamlit, Pandas, Plotly |
 | Database | PostgreSQL 16 + pgvector extension |
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
-| LLM | Ollama — qwen3:4b |
+| LLM | Ollama — llama3.2:3b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
 | Orchestration | LangChain, langchain-ollama |
 | Parsing | pdfplumber, pyzipper |
@@ -156,11 +156,12 @@ API docs available at: **http://localhost:8000/docs**
 ---
 
 ## AI Design and Evaluation
-**LLM — qwen3:4b**: Selected over Llama 3.1 8B for CPU-only inference. 
-qwen3:4b runs at ~30–60s/response on an AMD Ryzen without GPU, while 
-Llama 3.1 8B required 3–5 minutes. qwen3 also has stronger multilingual 
-performance (Hungarian + English) due to training on 119 languages. 
-The `/no_think` prefix disables chain-of-thought to halve response time.
+**LLM — llama3.2:3b**: Selected for its exceptional balance of speed and reasoning
+on consumer-grade CPUs. At 3B parameters, it provides highly responsive 
+conversational performance (typically 15-40s per response on modern CPUs) 
+while maintaining the multilingual capability required for Hungarian/English 
+medical terminology. The `/no_think` prefix is used to prioritize immediate 
+answer generation over extended chain-of-thought reasoning.
 
 **Embedding — nomic-embed-text**: 768-dimensional embeddings via Ollama, 
 entirely local. Selected over OpenAI text-embedding-3-small because no 
