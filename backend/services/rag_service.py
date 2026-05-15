@@ -148,15 +148,6 @@ class RAGService:
             sections.extend(similar)
 
         return "\n".join(sections)
-        sections: list[str] = []
-
-        # 1. Semantic search for relevant matches
-        similar = await self.similarity_search(query, limit=5, db=db)
-        if similar:
-            sections.append("=== Relevant Health Context ===")
-            sections.extend(similar)
-
-        return "\n".join(sections)
 
 
 rag_service = RAGService()

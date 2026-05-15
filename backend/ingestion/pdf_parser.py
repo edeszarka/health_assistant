@@ -20,6 +20,8 @@ from typing import Optional
 
 import pdfplumber
 
+from ingestion.lab_normalizer import LabNormalizer
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,101 +116,6 @@ class ParsedLabReport:
 
 
 # ---------------------------------------------------------------------------
-# Name normalizer — Hungarian/Latin to standard internal keys
-# ---------------------------------------------------------------------------
-
-KNOWN_MAPPINGS: dict[str, str] = {
-    # Blood count
-    "fehérvérsejt": "wbc",
-    "vörösvértest": "rbc",
-    "vörösvérsejt": "rbc",
-    "hemoglobin": "hemoglobin",
-    "hematokrit": "hematocrit",
-    "trombocita": "platelets",
-    "thrombocyta": "platelets",
-    "limfocita (abszolut)": "lymphocytes_abs",
-    "limfocita": "lymphocytes_pct",
-    "monocita (abszolut)": "monocytes_abs",
-    "monocita": "monocytes_pct",
-    "neutrofil (abszolut)": "neutrophils_abs",
-    "neutrofil": "neutrophils_pct",
-    "eozinofil (abszolut)": "eosinophils_abs",
-    "eozinofil": "eosinophils_pct",
-    "basofil (abszolut)": "basophils_abs",
-    "basofil": "basophils_pct",
-    "mcv": "mcv",
-    "mch": "mch",
-    "mchc": "mchc",
-    "mpv": "mpv",
-    "we": "esr",
-    # Metabolic
-    "glukóz": "glucose",
-    "cukor": "glucose",
-    "hba1c": "hba1c",
-    "karbamid": "bun",
-    "kreatinin": "creatinine",
-    "hugysav": "uric_acid",
-    "húgysav": "uric_acid",
-    "egfr": "egfr",
-    # Liver
-    "got": "ast",
-    "gpt": "alt",
-    "gamma gt": "ggt",
-    "gamma-gt": "ggt",
-    "alkalikus foszfatáz": "alp",
-    "totál bilirubin": "total_bilirubin",
-    "konjugált bilirubin": "direct_bilirubin",
-    # Lipids
-    "koleszterin": "total_cholesterol",
-    "triglicerid": "triglycerides",
-    "hdl koleszterin": "hdl_cholesterol",
-    "ldl koleszterin": "ldl_cholesterol",
-    "hdl-koleszterin": "hdl_cholesterol",
-    "ldl-koleszterin": "ldl_cholesterol",
-    # Iron
-    "szérum fe": "serum_iron",
-    "ferritin": "ferritin",
-    "transzferrin": "transferrin",
-    "teljes vaskötő kapacitá": "tibc",
-    "teljes vaskötő kapacitás": "tibc",
-    # Electrolytes
-    "szérum na": "sodium",
-    "szérum k": "potassium",
-    "szérum ca": "calcium",
-    "szérum mg": "magnesium",
-    # Thyroid
-    "tsh": "tsh",
-    "ft4": "free_t4",
-    "ft3": "free_t3",
-    # Inflammation
-    "c reaktív protein": "crp",
-    "crp": "crp",
-    # Urine (text results — skipped during numeric parsing)
-    "általános vizelet": "urinalysis",
-    "vizelet üledék": "urine_sediment",
-}
-
-
-def normalize_name(raw_name: str) -> str:
-    """
-    Map a raw Hungarian/Latin lab test name to a standard internal key.
-    Falls back to a sanitized version of the raw name if no mapping found.
-    """
-    cleaned = raw_name.strip().lower()
-    if cleaned in KNOWN_MAPPINGS:
-        return KNOWN_MAPPINGS[cleaned]
-    # Partial match — pick longest matching key
-    best_match, best_len = None, 0
-    for key, val in KNOWN_MAPPINGS.items():
-        if key in cleaned and len(key) > best_len:
-            best_match, best_len = val, len(key)
-    if best_match:
-        return best_match
-    # Fallback
-    return re.sub(r"[^a-z0-9áéíóöőúüű]", "_", cleaned).strip("_")
-
-
-# ---------------------------------------------------------------------------
 # PDFParser
 # ---------------------------------------------------------------------------
 
@@ -285,7 +192,7 @@ class PDFParser:
     }
 
     def __init__(self) -> None:
-        pass
+        self.normalizer = LabNormalizer()
 
     # ------------------------------------------------------------------
     # Public
@@ -471,7 +378,7 @@ class PDFParser:
 
         return LabValue(
             raw_name=name_raw,
-            normalized_name=normalize_name(name_raw),
+            normalized_name=self.normalizer.normalize(name_raw),
             value=value,
             unit=unit,
             ref_range_low=ref_low,

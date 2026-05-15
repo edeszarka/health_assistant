@@ -75,11 +75,15 @@ class SamsungHealthParser:
         metrics = self.parse_zip(zip_path)
         return SamsungHealthReport(metrics=metrics)
 
-    def parse_zip(self, zip_path: str) -> List[SamsungMetricRaw]:
-        """Open a Samsung Health ZIP and extract all recognised metrics."""
+    def parse_zip_bytes(self, zip_bytes: bytes) -> List[SamsungMetricRaw]:
+        """Parse Samsung Health ZIP bytes and return metrics."""
+        return self.parse_zip(io.BytesIO(zip_bytes))
+
+    def parse_zip(self, zip_input: str | io.BytesIO) -> List[SamsungMetricRaw]:
+        """Open a Samsung Health ZIP (path or bytes) and extract metrics."""
         results: List[SamsungMetricRaw] = []
         try:
-            with zipfile.ZipFile(zip_path, "r") as zf:
+            with zipfile.ZipFile(zip_input, "r") as zf:
                 filenames = zf.namelist()
                 for name in filenames:
                     basename = name.split("/")[-1].lower()
