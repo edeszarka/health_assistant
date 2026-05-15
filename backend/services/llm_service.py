@@ -49,7 +49,7 @@ Additional medical context (from NIH MedlinePlus):
 
 Rules:
 - Always reference specific values from the user's data shown above — quote the actual numbers
-- If the user asks about steps, HR, sleep, cholesterol or any metric, find it above and cite it
+- If the user asks about steps, cholesterol or any metric, find it above and cite it
 - Explain what flagged or trending values COULD indicate — never diagnose
 - Recommend which specialist to consult when values warrant it
 - When citing health information, note it comes from MedlinePlus (NIH)
@@ -98,7 +98,7 @@ Additional medical context (from NIH MedlinePlus):
 
 Rules:
 - Always reference specific values from the user's data shown above — quote the actual numbers
-- If the user asks about steps, HR, sleep, cholesterol or any metric, find it above and cite it
+- If the user asks about steps, cholesterol or any metric, find it above and cite it
 - Explain what flagged or trending values COULD indicate — never diagnose
 - Recommend which specialist to consult when values warrant it
 - When citing health information, note it comes from MedlinePlus (NIH)
@@ -147,7 +147,7 @@ class LLMService:
             risk_scores: Dict with framingham_risk_percent and findrisc_score.
             query_type: "general" or "risk_analysis" (enables thinking mode).
             user_language: "English" or "Hungarian" — detected from message.
-            health_metrics_summary: Steps, HR, sleep, weight from Samsung/Zepp.
+            health_metrics_summary: Steps, weight, and calories from Samsung/Zepp.
             flagged_values: Lab results with trends and flag status.
             bp_summary: Blood pressure readings.
             family_history_summary: Family medical history entries.
