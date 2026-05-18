@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -67,6 +67,114 @@ def _detect_language(message: str) -> str:
     has_hu_chars = any(c in hungarian_chars for c in message)
     has_hu_words = any(w in message.lower().split() for w in hungarian_words)
     return "Hungarian" if (has_hu_chars or has_hu_words) else "English"
+
+
+def _detect_intent(message: str) -> set[str]:
+    """Detect which data domains are relevant based on keywords in the message.
+
+    Args:
+        message: The user's input message string.
+
+    Returns:
+        A set of string tags indicating detected intents.
+    """
+    msg = message.lower()
+    intents: set[str] = set()
+
+    mapping = {
+        "steps": ["step", "walk", "lépés", "gyalog"],
+        "weight": ["weight", "kg", "bmi", "súly", "testsúly"],
+        "calories": ["calori", "kcal", "kalória"],
+        "sleep": ["sleep", "alvás", "alv"],
+        "heart_rate": ["heart rate", "pulse", "bpm", "pulzus", "szívfrekvencia"],
+        "labs": [
+            "lab", "blood test", "result", "cholesterol", "glucose", "creatinine",
+            "wbc", "vérkép", "laborlelet", "eredmény", "vércukor", "koleszterin"
+        ],
+        "bp": [
+            "blood pressure", "vérnyomás", "systolic", "diastolic",
+            "hypertension", "hipertónia"
+        ],
+        "family": [
+            "family", "hereditary", "genetic", "parent", "father", "mother",
+            "csalá", "örökletes"
+        ],
+        "risk": [
+            "risk", "framingham", "findrisc", "cardiovascular",
+            "diabetes risk", "kockázat"
+        ],
+    }
+
+    for intent, keywords in mapping.items():
+        if any(kw in msg for kw in keywords):
+            intents.add(intent)
+
+    if re.search(r"\d{4}[-./]\d{1,2}[-./]\d{1,2}", message):
+        intents.add("date_query")
+
+    if "risk" in intents:
+        intents.add("labs")
+
+    if not intents:
+        # Fallback for general questions: all tags EXCEPT date_query
+        return {k for k in mapping.keys()}
+
+    return intents
+
+
+async def _build_date_specific_summary(message: str, db: AsyncSession) -> str:
+    """Search for a date in the message and build a summary for that specific day.
+
+    Args:
+        message: The user's input message string.
+        db: Async database session.
+
+    Returns:
+        A formatted string summary of data for the detected date, or empty string.
+    """
+    match = re.search(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", message)
+    if not match:
+        return ""
+
+    try:
+        y, m, d = map(int, match.groups())
+        target_date = date(y, m, d)
+    except Exception:
+        return ""
+
+    # naive datetime for comparison as per requirement
+    start_dt = datetime.combine(target_date, time.min)
+    end_dt = datetime.combine(target_date, time.max)
+
+    try:
+        # Samsung Health Metrics
+        stmt_metrics = select(SamsungHealthMetric).where(
+            SamsungHealthMetric.recorded_at >= start_dt,
+            SamsungHealthMetric.recorded_at <= end_dt
+        )
+        res_metrics = await db.execute(stmt_metrics)
+        metrics = res_metrics.scalars().all()
+
+        # Lab Results
+        stmt_labs = select(LabResult).where(LabResult.test_date == target_date)
+        res_labs = await db.execute(stmt_labs)
+        labs = res_labs.scalars().all()
+
+        if not metrics and not labs:
+            return ""
+
+        lines = [f"\n=== Data for {target_date} ==="]
+        for met in metrics:
+            lines.append(f"  - {met.metric_type}: {met.value}")
+        for lab in labs:
+            flag = " [!] " if lab.is_flagged else " "
+            lines.append(
+                f"  - Lab:{flag}{lab.raw_name} ({lab.test_name}): "
+                f"{lab.value} {lab.unit or ''}"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"(Error fetching date-specific data: {e})"
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +639,9 @@ async def chat(
     # Detect language first — passed to LLM to enforce reply language
     user_language = _detect_language(request.message)
 
+    # Detect intent to reduce context bloat
+    intents = _detect_intent(request.message)
+
     # User profile
     try:
         result  = await db.execute(select(UserProfile).limit(1))
@@ -538,12 +649,36 @@ async def chat(
     except Exception:
         profile = None
 
+    # Date-specific context if a date is mentioned
+    date_summary = ""
+    if "date_query" in intents:
+        date_summary = await _build_date_specific_summary(request.message, db)
+
     # Structured context — direct SQL, one domain per function
-    metrics_summary = await _build_health_metrics_summary(db)
-    lab_summary     = await _build_lab_trends_summary(db)
-    bp_summary      = await _build_bp_summary(db)
-    family_summary  = await _build_family_history_summary(db)
-    risk_scores     = await _build_risk_scores(db, profile, request.message)
+    # Only fetch what is relevant to the detected intent
+    metrics_summary = ""
+    if any(i in intents for i in ["steps", "weight", "calories", "sleep", "heart_rate"]):
+        metrics_summary = await _build_health_metrics_summary(db)
+
+    # Always include date_summary if found, prepending it to metrics
+    if date_summary:
+        metrics_summary = date_summary + ("\n" + metrics_summary if metrics_summary else "")
+
+    lab_summary = ""
+    if "labs" in intents:
+        lab_summary = await _build_lab_trends_summary(db)
+
+    bp_summary = ""
+    if "bp" in intents:
+        bp_summary = await _build_bp_summary(db)
+
+    family_summary = ""
+    if "family" in intents:
+        family_summary = await _build_family_history_summary(db)
+
+    risk_scores = {}
+    if "risk" in intents:
+        risk_scores = await _build_risk_scores(db, profile, request.message)
 
     # RAG — semantic search for medical knowledge only, no structured data
     try:
