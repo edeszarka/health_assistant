@@ -12,11 +12,16 @@ from config import settings
 from models.db_models import Embedding
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class RAGService:
     """Manages document embeddings and semantic similarity retrieval.
 
     This service handles communication with the Ollama embedding API and
-    performs vector similarity searches using pgvector.
+    performs vector similarity searches using pgvector in PostgreSQL.
     """
 
     def __init__(self) -> None:
@@ -60,12 +65,9 @@ class RAGService:
 
         Args:
             source_type: The category of the source (e.g., 'lab_result', 'bp_summary').
-            source_id: The primary key ID of the source record in its respective table.
+            source_id: The primary key ID of the source record.
             content: The actual text content to be embedded and stored.
             db: The asynchronous SQLAlchemy database session.
-
-        Returns:
-            None.
         """
         vector = await self.embed_text(content)
         emb = Embedding(
@@ -92,29 +94,30 @@ class RAGService:
             query: The user's question or search topic.
             limit: The maximum number of results to return. Defaults to 5.
             threshold: The minimum similarity score (1 - cosine distance). Defaults to 0.75.
-            db: The asynchronous SQLAlchemy database session. Defaults to None.
+            db: The asynchronous SQLAlchemy database session.
 
         Returns:
-            A list of matching content strings, ordered by relevance (most relevant first).
+            A list of matching content strings, ordered by relevance.
         """
         if db is None:
             return []
 
-        vector = await self.embed_text(query)
-        # pgvector operator <=> is cosine distance
-        stmt = (
-                select(Embedding.content)
-                .where(
-                    # only return chunks closer than threshold
-                    (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
-                )
-                .order_by(Embedding.embedding.op("<=>")(vector))
-                .limit(limit)
-            )
         try:
+            vector = await self.embed_text(query)
+            # pgvector operator <=> is cosine distance
+            stmt = (
+                    select(Embedding.content)
+                    .where(
+                        # only return chunks closer than threshold
+                        (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
+                    )
+                    .order_by(Embedding.embedding.op("<=>")(vector))
+                    .limit(limit)
+                )
             result = await db.execute(stmt)
             return [row[0] for row in result.fetchall()]
-        except Exception:
+        except Exception as exc:
+            logger.error(f"Similarity search failed: {exc}")
             return []
 
     # ── Context building ─────────────────────────────────────────────────────
@@ -139,15 +142,6 @@ class RAGService:
         Returns:
             A formatted context string containing relevant matches from the vector store.
         """
-        sections: list[str] = []
-
-        # 1. Semantic search for relevant matches
-        similar = await self.similarity_search(query, limit=5, db=db)
-        if similar:
-            sections.append("=== Relevant Health Context ===")
-            sections.extend(similar)
-
-        return "\n".join(sections)
         sections: list[str] = []
 
         # 1. Semantic search for relevant matches

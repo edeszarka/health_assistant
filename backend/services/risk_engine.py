@@ -7,6 +7,7 @@ class RiskEngine:
     """Calculates cardiovascular, diabetes, and blood-pressure risk scores."""
 
     # ── Framingham (Wilson et al. 1998) ──────────────────────────────────────
+    # Source: https://www.ahajournals.org/doi/10.1161/01.cir.97.18.1837
 
     # Point tables: age points by sex
     _FRAMINGHAM_AGE_MALE = {
@@ -34,7 +35,7 @@ class RiskEngine:
         (75, 999): 16,
     }
 
-    # Total cholesterol by age group (points for <160, 160-199, 200-239, 240-279, ≥280)
+    # Total cholesterol points by age group (ordered: <160, 160-199, 200-239, 240-279, ≥280)
     _FRAMINGHAM_TC_MALE = {
         (20, 39): [0, 4, 7, 9, 11],
         (40, 49): [0, 3, 5, 6, 8],
@@ -53,7 +54,7 @@ class RiskEngine:
     # HDL points (≥60, 50-59, 40-49, <40)
     _FRAMINGHAM_HDL = [(-1), 0, 1, 2]
 
-    # SBP points (treated vs untreated) for male/female
+    # Systolic Blood Pressure (SBP) points (treated vs untreated)
     _FRAMINGHAM_SBP_MALE_UNTREATED = {
         (0, 119): 0,
         (120, 129): 0,
@@ -83,50 +84,16 @@ class RiskEngine:
         (160, 999): 6,
     }
 
-    # 10-year risk lookup tables (points → risk %)
+    # 10-year cardiovascular risk lookup (points → risk %)
     _FRAMINGHAM_RISK_MALE = {
-        -3: 1,
-        -2: 1,
-        -1: 1,
-        0: 1,
-        1: 1,
-        2: 1,
-        3: 1,
-        4: 1,
-        5: 2,
-        6: 2,
-        7: 3,
-        8: 4,
-        9: 5,
-        10: 6,
-        11: 8,
-        12: 10,
-        13: 12,
-        14: 16,
-        15: 20,
-        16: 25,
+        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
+        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
+        13: 12, 14: 16, 15: 20, 16: 25,
     }
     _FRAMINGHAM_RISK_FEMALE = {
-        -3: 1,
-        -2: 1,
-        -1: 1,
-        0: 1,
-        1: 1,
-        2: 1,
-        3: 1,
-        4: 1,
-        5: 2,
-        6: 2,
-        7: 3,
-        8: 4,
-        9: 5,
-        10: 6,
-        11: 8,
-        12: 10,
-        13: 12,
-        14: 16,
-        15: 20,
-        16: 25,
+        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
+        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
+        13: 12, 14: 16, 15: 20, 16: 25,
     }
 
     def calculate_framingham(
@@ -148,92 +115,68 @@ class RiskEngine:
             total_cholesterol: Total cholesterol level in mg/dL.
             hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL.
             systolic_bp: Systolic blood pressure reading in mmHg.
-            bp_treated: True if the patient is on antihypertensive medication, False otherwise.
-            diabetes: True if the patient has a diagnosis of diabetes, False otherwise.
-            smoker: True if the patient is a current smoker, False otherwise.
+            bp_treated: True if the patient is on antihypertensive medication.
+            diabetes: True if the patient has a diagnosis of diabetes.
+            smoker: True if the patient is a current smoker.
 
         Returns:
-            A dictionary containing:
-                - score_points (int): The total calculated Framingham points.
-                - risk_percent (float): The estimated 10-year risk of a cardiovascular event.
-                - risk_category (str): A qualitative description of the risk level (e.g., "Low", "High").
+            Dict containing score_points, risk_percent, and risk_category.
         """
-        male = sex.lower() == "male"
+        is_male = sex.lower() == "male"
         points = 0
 
-        # Age points
-        age_table = self._FRAMINGHAM_AGE_MALE if male else self._FRAMINGHAM_AGE_FEMALE
+        # 1. Age points
+        age_table = self._FRAMINGHAM_AGE_MALE if is_male else self._FRAMINGHAM_AGE_FEMALE
         points += self._lookup_range(age_table, age)
 
-        # Total cholesterol points
-        tc_table = self._FRAMINGHAM_TC_MALE if male else self._FRAMINGHAM_TC_FEMALE
+        # 2. Total cholesterol points
+        tc_table = self._FRAMINGHAM_TC_MALE if is_male else self._FRAMINGHAM_TC_FEMALE
         tc_pts_list = self._lookup_range(tc_table, age)
         if isinstance(tc_pts_list, list):
-            tc_idx = (
-                0
-                if total_cholesterol < 160
-                else (
-                    1
-                    if total_cholesterol < 200
-                    else (
-                        2
-                        if total_cholesterol < 240
-                        else 3 if total_cholesterol < 280 else 4
-                    )
-                )
-            )
+            if total_cholesterol < 160: tc_idx = 0
+            elif total_cholesterol < 200: tc_idx = 1
+            elif total_cholesterol < 240: tc_idx = 2
+            elif total_cholesterol < 280: tc_idx = 3
+            else: tc_idx = 4
             points += tc_pts_list[tc_idx]
 
-        # HDL points
-        hdl_idx = (
-            0
-            if hdl_cholesterol >= 60
-            else 1 if hdl_cholesterol >= 50 else 2 if hdl_cholesterol >= 40 else 3
-        )
+        # 3. HDL points
+        if hdl_cholesterol >= 60: hdl_idx = 0
+        elif hdl_cholesterol >= 50: hdl_idx = 1
+        elif hdl_cholesterol >= 40: hdl_idx = 2
+        else: hdl_idx = 3
         points += self._FRAMINGHAM_HDL[hdl_idx]
 
-        # SBP points
-        if male:
-            sbp_table = (
-                self._FRAMINGHAM_SBP_MALE_TREATED
-                if bp_treated
-                else self._FRAMINGHAM_SBP_MALE_UNTREATED
-            )
+        # 4. SBP points
+        if is_male:
+            sbp_table = self._FRAMINGHAM_SBP_MALE_TREATED if bp_treated else self._FRAMINGHAM_SBP_MALE_UNTREATED
         else:
-            sbp_table = (
-                self._FRAMINGHAM_SBP_FEMALE_TREATED
-                if bp_treated
-                else self._FRAMINGHAM_SBP_FEMALE_UNTREATED
-            )
+            sbp_table = self._FRAMINGHAM_SBP_FEMALE_TREATED if bp_treated else self._FRAMINGHAM_SBP_FEMALE_UNTREATED
         points += self._lookup_range(sbp_table, systolic_bp)
 
-        # Smoking
+        # 5. Smoking & Diabetes
         if smoker:
-            points += 8 if male else 9
-
-        # Diabetes
+            points += 8 if is_male else 9
         if diabetes:
-            points += 11 if male else 13
+            points += 11 if is_male else 13
 
-        # Clamp to lookup range
-        risk_table = (
-            self._FRAMINGHAM_RISK_MALE if male else self._FRAMINGHAM_RISK_FEMALE
-        )
+        # 6. Risk lookup
+        risk_table = self._FRAMINGHAM_RISK_MALE if is_male else self._FRAMINGHAM_RISK_FEMALE
         clamped = max(min(points, max(risk_table.keys())), min(risk_table.keys()))
-        risk_pct = risk_table.get(clamped, 30)
+        risk_pct = float(risk_table.get(clamped, 30))
 
-        category = (
-            "Low (<10%)"
-            if risk_pct < 10
-            else "Moderate (10-20%)" if risk_pct <= 20 else "High (>20%)"
-        )
+        if risk_pct < 10: category = "Low (<10%)"
+        elif risk_pct <= 20: category = "Moderate (10-20%)"
+        else: category = "High (>20%)"
+
         return {
             "score_points": points,
-            "risk_percent": float(risk_pct),
+            "risk_percent": risk_pct,
             "risk_category": category,
         }
 
     # ── FINDRISC ─────────────────────────────────────────────────────────────
+    # Source: https://www.health.org.nz/resources/findrisc-diabetes-risk-assessment-tool
 
     def calculate_findrisc(
         self,
@@ -246,7 +189,6 @@ class RiskEngine:
         hypertension_medication: bool,
         high_glucose_history: bool,
         family_history_diabetes: str = "none",
-        # "none" / "second_degree" / "first_degree"
     ) -> dict:
         """Calculate FINDRISC type-2 diabetes risk score.
 
@@ -266,85 +208,50 @@ class RiskEngine:
         """
         score = 0
 
-        # Age
-        if age < 45:
-            score += 0
-        elif age < 55:
-            score += 2
-        elif age < 65:
-            score += 3
-        else:
-            score += 4
+        # 1. Age
+        if age < 45: score += 0
+        elif age < 55: score += 2
+        elif age < 65: score += 3
+        else: score += 4
 
-        # BMI
+        # 2. BMI
         if bmi is not None:
-            if bmi < 25:
-                score += 0
-            elif bmi <= 30:
-                score += 1
-            else:
-                score += 3
+            if bmi < 25: score += 0
+            elif bmi <= 30: score += 1
+            else: score += 3
         
-        # Waist circumference
+        # 3. Waist circumference
         if waist_cm is not None:
             if sex.lower() == "male":
-                if waist_cm < 94:
-                    score += 0
-                elif 94 <= waist_cm <= 102:
-                    score += 3
-                else:
-                    score += 4
+                if waist_cm < 94: score += 0
+                elif waist_cm <= 102: score += 3
+                else: score += 4
             else:
-                if waist_cm < 80:
-                    score += 0
-                elif 80 <= waist_cm <= 88:
-                    score += 3
-                else:
-                    score += 4
+                if waist_cm < 80: score += 0
+                elif waist_cm <= 88: score += 3
+                else: score += 4
 
-        # Physical activity (≥30 min/day most days → ≥30 * 5/7)
-        if physical_activity_mins_per_day < 21:  # ~30min × 5/7 days
-            score += 2
+        # 4. Lifestyle & Medical History
+        if physical_activity_mins_per_day < 21: score += 2 # < 150 min/week
+        if not vegetables_daily: score += 1
+        if hypertension_medication: score += 2
+        if high_glucose_history: score += 5
 
-        # Vegetables
-        if not vegetables_daily:
-            score += 1
+        # 5. Family history
+        if family_history_diabetes == "first_degree": score += 5
+        elif family_history_diabetes == "second_degree": score += 3
 
-        # BP medication
-        if hypertension_medication:
-            score += 2
-
-        # High glucose history
-        if high_glucose_history:
-            score += 5
-
-        # Family history
-        if family_history_diabetes == "first_degree":
-            score += 5
-        elif family_history_diabetes == "second_degree":
-            score += 3
-
-        # Risk category + 10-year risk
+        # 6. Risk category mapping
         if score < 7:
-            category = "Low"
-            risk_pct = 1.0
-            rec = "Maintain healthy lifestyle."
+            category, risk_pct, rec = "Low", 1.0, "Maintain healthy lifestyle."
         elif score < 12:
-            category = "Slightly elevated"
-            risk_pct = 4.0
-            rec = "Focus on diet and physical activity."
+            category, risk_pct, rec = "Slightly elevated", 4.0, "Focus on diet and physical activity."
         elif score < 15:
-            category = "Moderate"
-            risk_pct = 17.0
-            rec = "Consult your GP for fasting glucose or HbA1c test."
+            category, risk_pct, rec = "Moderate", 17.0, "Consult your GP for fasting glucose or HbA1c test."
         elif score < 20:
-            category = "High"
-            risk_pct = 33.0
-            rec = "Refer to endocrinologist; lifestyle intervention recommended."
+            category, risk_pct, rec = "High", 33.0, "Refer to endocrinologist; lifestyle intervention recommended."
         else:
-            category = "Very High"
-            risk_pct = 50.0
-            rec = "Urgent referral to endocrinologist; high probability of existing diabetes."
+            category, risk_pct, rec = "Very High", 50.0, "Urgent referral to endocrinologist; high probability of existing diabetes."
 
         return {
             "score": score,

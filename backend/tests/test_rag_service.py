@@ -19,9 +19,9 @@ def service():
 @pytest.mark.asyncio
 async def test_embed_text_returns_list(service):
     """embed_text should return a list of floats from Ollama."""
-    fake_resp = AsyncMock()
+    fake_resp = MagicMock()
     fake_resp.json.return_value = {"embedding": FAKE_EMBEDDING}
-    fake_resp.raise_for_status = AsyncMock()
+    fake_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_cls:
         mock_http = AsyncMock()
