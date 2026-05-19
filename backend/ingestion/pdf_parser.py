@@ -54,7 +54,6 @@ class PatientInfo:
     name: Optional[str] = None
     birth_date: Optional[date] = None
     sex: Optional[str] = None  # normalized to "male" / "female"
-    taj_number: Optional[str] = None
     sample_date: Optional[datetime] = None
     referring_doctor: Optional[str] = None
     lab_name: Optional[str] = None
@@ -85,7 +84,6 @@ class ParsedLabReport:
                     else None
                 ),
                 "sex": self.patient.sex,
-                "taj_number": self.patient.taj_number,
                 "sample_date": (
                     self.patient.sample_date.isoformat()
                     if self.patient.sample_date
@@ -156,7 +154,6 @@ class PDFParser:
     _NAME_LABEL_RE = re.compile(r"^Név\s*:\s*Sorszám", re.IGNORECASE | re.MULTILINE)
     _BIRTH_RE = re.compile(r"Született[:\s]+(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
     _SEX_RE = re.compile(r"Nem\s*[_\s]*:\s*(Férfi|Nő|férfi|nő)", re.IGNORECASE)
-    _TAJ_RE = re.compile(r"TAJ szám\s*:\s*(\d[\d\s]+\d)", re.IGNORECASE)
     _SAMPLE_DATE_RE = re.compile(
         r"Mintavétel ideje\s*[_\s]*:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})",
         re.IGNORECASE,
@@ -286,10 +283,6 @@ class PDFParser:
         m = self._SEX_RE.search(text)
         if m:
             info.sex = "male" if m.group(1).lower() == "férfi" else "female"
-
-        m = self._TAJ_RE.search(text)
-        if m:
-            info.taj_number = re.sub(r"\s+", "", m.group(1))
 
         m = self._SAMPLE_DATE_RE.search(text)
         if m:
