@@ -246,5 +246,5 @@ Production deployment would require GPU inference or a hosted model endpoint.
 data changes. For append-only health data this is acceptable; production would require
 an embedding refresh pipeline.
 
-**PII handling**: TAJ number and birth date are stored locally in plaintext. Production
+**PII handling**: Birth date is stored locally in plaintext. Production
 deployment would require field-level encryption and a clear data retention policy.
