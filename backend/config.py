@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     medlineplus_base_url: str = "https://wsearch.nlm.nih.gov/ws/query"
     medlineplus_connect_url: str = "https://connect.medlineplus.gov/application"
     medlineplus_cache_ttl_days: int = 7
+    rag_similarity_threshold: float = 0.75
 
     class Config:
         env_file = ".env"
