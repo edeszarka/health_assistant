@@ -85,7 +85,7 @@ class RAGService:
         self,
         query: str,
         limit: int = 5,
-        threshold: float = 0.75,
+        threshold: float = settings.rag_similarity_threshold,
         db: AsyncSession = None,
         source_types: Optional[list[str]] = None,
     ) -> list[str]:
@@ -94,7 +94,8 @@ class RAGService:
         Args:
             query: The user's question or search topic.
             limit: The maximum number of results to return. Defaults to 5.
-            threshold: The minimum similarity score (1 - cosine distance). Defaults to 0.75.
+            threshold: The minimum similarity score (1 - cosine distance).
+                Defaults to ``settings.rag_similarity_threshold`` (0.75).
             db: The asynchronous SQLAlchemy database session.
             source_types: Optional allow-list of ``Embedding.source_type`` values.
                 When provided, only chunks whose source type is in the list are

@@ -88,8 +88,29 @@ def _detect_intent(message: str) -> set[str]:
         "sleep": ["sleep", "alvás", "alv"],
         "heart_rate": ["heart rate", "pulse", "bpm", "pulzus", "szívfrekvencia"],
         "labs": [
-            "lab", "blood test", "result", "cholesterol", "glucose", "creatinine",
-            "wbc", "vérkép", "laborlelet", "eredmény", "vércukor", "koleszterin"
+            "lab", "blood test", "result", "vérkép", "laborlelet", "eredmény",
+            "cholesterol", "glucose", "creatinine", "vércukor", "koleszterin",
+            # Blood count
+            "wbc", "rbc", "hemoglobin", "hematocrit", "platelet", "trombocita",
+            "lymphocyte", "limfocita", "monocyte", "monocita",
+            "neutrophil", "neutrofil", "eosinophil", "eozinofil",
+            "basophil", "basofil", "mcv", "mch", "mchc", "mpv", "esr",
+            # Metabolic / kidney
+            "hba1c", "bun", "karbamid", "kreatinin", "uric acid", "hugysav",
+            "húgysav", "egfr",
+            # Electrolytes
+            "sodium", "nátrium", "potassium", "kálium", "calcium", "kalcium",
+            "magnesium", "magnézium", "chloride", "klorid",
+            # Liver
+            "ast", "got", "alt", "gpt", "ggt", "alp", "bilirubin",
+            # Lipids
+            "hdl", "ldl", "triglycerid", "triglicerid",
+            # Iron / proteins
+            "serum iron", "ferritin", "transferrin", "tibc", "total protein",
+            "albumin",
+            # Thyroid / inflammation / urine
+            "tsh", "free t3", "free t4", "ft3", "ft4", "crp", "urinalysis",
+            "vizelet",
         ],
         "bp": [
             "blood pressure", "vérnyomás", "systolic", "diastolic",
