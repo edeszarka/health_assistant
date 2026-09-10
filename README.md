@@ -177,15 +177,13 @@ domain-specific Hungarian terminology not well-represented in the
 embedding space. A production system would use RAGAS or a similar 
 automated evaluation framework.
 
-**Hungarian/Latin → Standard normalization**: Two-stage pipeline.
-Stage 1: a hardcoded lookup dictionary maps known Hungarian lab names 
-to WHO codes (e.g., Fehérvérsejt → wbc, Karbamid → bun, ~40 mappings).
-Stage 2: unmapped names are sent to the local LLM with a structured 
-prompt requesting the WHO equivalent — this handles provider-specific 
-abbreviations and Latin variants that the dictionary doesn't cover.
-The LLM normalization stage adds ~5–10s to PDF processing time but 
-reduces missed mappings from ~30% (dictionary only) to <5% on tested 
-Hungarian lab formats.
+**Hungarian/Latin → Standard normalization**: Single-stage, dictionary-only.
+A hardcoded lookup dictionary in `backend/ingestion/lab_normalizer.py`
+(`KNOWN_MAPPINGS`) maps known Hungarian/Latin lab names to standard keys
+(e.g., Fehérvérsejt → wbc, Karbamid → bun). `LabNormalizer.normalize()`
+resolves each raw name in three steps: exact match, then longest substring
+match against the dictionary, then a lowercase fallback of the raw name for
+unmapped entries. No LLM is involved in this path.
 
 ## Development
 
@@ -231,9 +229,9 @@ ScreeningRule("Test Name", min_age, max_age, sex_filter=..., family_trigger=...,
 **Single-user, local-only**: Deliberately designed for personal use on a local machine.
 No data leaves the host. Multi-tenancy would require auth and user_id FKs on all tables.
 
-**PDF parsing brittleness**: LLM-based normalization handles format variation better than
-regex, but provider-specific layouts remain a known failure mode. Production would require
-a human review step for parsed values.
+**PDF parsing brittleness**: Dictionary-based normalization covers known Hungarian/Latin
+names, but provider-specific abbreviations and layouts remain a known failure mode.
+Production would require a human review step for parsed values.
 
 **No human-in-the-loop for parsed data**: Automated parsing of medical values without
 verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
@@ -248,3 +246,9 @@ an embedding refresh pipeline.
 
 **PII handling**: Birth date is stored locally in plaintext. Production
 deployment would require field-level encryption and a clear data retention policy.
+
+## Roadmap (Planned / Not yet implemented)
+
+- **LLM-assisted lab-name normalization**: fall back to the local LLM for raw
+  lab names not found in `KNOWN_MAPPINGS` (provider-specific abbreviations,
+  Latin variants). Not implemented today — normalization is dictionary-only.
