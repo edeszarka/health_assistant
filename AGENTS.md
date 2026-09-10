@@ -41,3 +41,11 @@ A válaszod NEM tekinthető késznek, amíg mind az öt alábbi pont nincs benne
 
 Ha bármelyik pont hiányzik, a reviewer újra fogja kérni — ezért ne hagyd ki
 egyiket sem, akkor sem, ha ettől a válasz hosszú lesz.
+
+## Testing Protocols
+Tests must be run from the `backend/` directory, with these env vars set
+first (the repo's `.env` file does not satisfy Settings' required fields
+when tests are run outside Docker):
+  DATABASE_URL=postgresql+asyncpg://healthuser:pw@localhost:5432/healthassistant
+  SYNC_DATABASE_URL=postgresql+psycopg2://healthuser:pw@localhost:5432/healthassistant
+Command: cd backend && pytest tests/ -v
