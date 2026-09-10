@@ -1,11 +1,13 @@
 """Tests for RAGService — embedding and similarity search."""
 from __future__ import annotations
 
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.dialects import postgresql
 
+from config import settings
 from services.rag_service import RAGService
 
 
@@ -72,6 +74,12 @@ async def test_similarity_search_no_db_returns_empty(service):
     """similarity_search with db=None should return [] without error."""
     result = await service.similarity_search("anything", limit=5, db=None)
     assert result == []
+
+
+def test_similarity_search_default_threshold_from_settings(service):
+    """The default threshold should be read from Settings, not hardcoded."""
+    default = inspect.signature(service.similarity_search).parameters["threshold"].default
+    assert default == settings.rag_similarity_threshold
 
 
 @pytest.mark.asyncio
