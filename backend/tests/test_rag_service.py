@@ -4,6 +4,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from services.rag_service import RAGService
 
@@ -71,3 +72,37 @@ async def test_similarity_search_no_db_returns_empty(service):
     """similarity_search with db=None should return [] without error."""
     result = await service.similarity_search("anything", limit=5, db=None)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_similarity_search_applies_source_types_filter(service):
+    """source_types should restrict the query with an IN clause on source_type."""
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_result
+
+    with patch.object(service, "embed_text", return_value=FAKE_EMBEDDING):
+        await service.similarity_search(
+            "blood test", source_types=["guideline"], db=mock_db
+        )
+
+    stmt = mock_db.execute.call_args.args[0]
+    compiled = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "source_type IN" in compiled
+
+
+@pytest.mark.asyncio
+async def test_similarity_search_without_source_types_has_no_filter(service):
+    """Omitting source_types should leave the WHERE clause free of source_type."""
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_result
+
+    with patch.object(service, "embed_text", return_value=FAKE_EMBEDDING):
+        await service.similarity_search("blood test", db=mock_db)
+
+    stmt = mock_db.execute.call_args.args[0]
+    compiled = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "source_type" not in compiled
