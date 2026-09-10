@@ -87,6 +87,7 @@ class RAGService:
         limit: int = 5,
         threshold: float = 0.75,
         db: AsyncSession = None,
+        source_types: Optional[list[str]] = None,
     ) -> list[str]:
         """Semantic similarity search using pgvector cosine distance.
 
@@ -95,6 +96,9 @@ class RAGService:
             limit: The maximum number of results to return. Defaults to 5.
             threshold: The minimum similarity score (1 - cosine distance). Defaults to 0.75.
             db: The asynchronous SQLAlchemy database session.
+            source_types: Optional allow-list of ``Embedding.source_type`` values.
+                When provided, only chunks whose source type is in the list are
+                returned. When ``None``, no source-type filtering is applied.
 
         Returns:
             A list of matching content strings, ordered by relevance.
@@ -105,15 +109,16 @@ class RAGService:
         try:
             vector = await self.embed_text(query)
             # pgvector operator <=> is cosine distance
+            stmt = select(Embedding.content).where(
+                # only return chunks closer than threshold
+                (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
+            )
+            if source_types:
+                stmt = stmt.where(Embedding.source_type.in_(source_types))
             stmt = (
-                    select(Embedding.content)
-                    .where(
-                        # only return chunks closer than threshold
-                        (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
-                    )
-                    .order_by(Embedding.embedding.op("<=>")(vector))
-                    .limit(limit)
-                )
+                stmt.order_by(Embedding.embedding.op("<=>")(vector))
+                .limit(limit)
+            )
             result = await db.execute(stmt)
             return [row[0] for row in result.fetchall()]
         except Exception as exc:
@@ -128,11 +133,18 @@ class RAGService:
         user_profile: Optional[object],
         db: AsyncSession,
     ) -> str:
-        """Assemble a rich context string using semantic similarity search.
-        
-        This method avoids duplicating data already injected by the chat router
-        (labs, BP, etc.) and focuses on finding relevant matching content from
-        stored embeddings.
+        """Assemble a context string from semantically similar stored records.
+
+        The returned content comes exclusively from the ``embeddings`` table,
+        which currently stores only the user's own previously ingested records
+        (``lab_result``, ``samsung_summary``, ``family_history``). No external
+        medical literature (e.g. MedlinePlus or USPSTF guideline text) is
+        stored, so this method does NOT return external reference material and
+        must not be presented as such.
+
+        This method also performs no deduplication against data already
+        injected by the chat router; the same underlying record may appear both
+        in the structured summaries and in this context.
 
         Args:
             query: The user's input message.
@@ -140,7 +152,8 @@ class RAGService:
             db: The asynchronous SQLAlchemy database session.
 
         Returns:
-            A formatted context string containing relevant matches from the vector store.
+            A formatted context string containing relevant matches from the
+            vector store, or an empty string when nothing is found.
         """
         sections: list[str] = []
 
