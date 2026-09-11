@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
