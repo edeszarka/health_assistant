@@ -221,8 +221,12 @@ alembic upgrade head
 ### Add a new screening rule
 Edit `backend/services/screening_service.py` → add a `ScreeningRule` to `SCREENING_RULES`:
 ```python
-ScreeningRule("Test Name", min_age, max_age, sex_filter=..., family_trigger=..., urgency="...", specialist="..."),
+ScreeningRule("Test Name", min_age, max_age, sex_filter=..., family_trigger=..., lab_trigger=..., urgency="...", specialist="..."),
 ```
+
+`family_trigger` and `lab_trigger` are alternative (OR) activation paths: a rule
+with neither always applies within its age/sex range, while a rule with either
+fires when at least one trigger matches.
 
 ## Known Limitations and Design Decisions
 

@@ -58,7 +58,7 @@ pytest tests/ -v
 
 ### Extending the System
 - **Lab Normalization**: Add new Hungarian/Latin mapping strings to `KNOWN_MAPPINGS` in `backend/ingestion/lab_normalizer.py`.
-- **Screening Rules**: Add new recommendation tuples to `SCREENING_RULES` in `backend/services/screening_service.py`.
+- **Screening Rules**: Add new recommendation tuples to `SCREENING_RULES` in `backend/services/screening_service.py`. Rules support `family_trigger` and `lab_trigger` as alternative (OR) activation paths — a rule with neither always applies within its age/sex range, while a rule with either fires when at least one trigger matches.
 - **New Routers**: Register new FastAPI routers in `backend/main.py`.
 
 ### Privacy and Security
