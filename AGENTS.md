@@ -24,23 +24,34 @@
 2. Csak a megjelölt fájlokat módosítsd, kivéve ha a teszt-lefedettség indokolja egy teszt-fájl hozzáadását.
 3. A végén adj összefoglalót: mely fájlok, miért, milyen kockázattal, mi maradt nyitott kérdés.
 
-## Kötelező kimenet minden feladat végén
-A válaszod NEM tekinthető késznek, amíg mind az öt alábbi pont nincs benne:
+## Output protocol (lean)
 
-1. **Teljes diff**, nem csak `--stat`: `git diff <base>..<branch>` teljes tartalma
-   inline, minden módosított fájlra.
-2. **Pontonkénti checklist** — a feladat promptban felsorolt MINDEN "Required
-   changes" tételhez egy sor: megtörtént-e, és hol (fájl:sor vagy
-   függvénynév) valósult meg. Ha egy lehetséges megoldási út (a)/(b) közül
-   választottál, indokold explicit, melyiket és miért.
-3. **Teljes teszt-kimenet** (nem csonkolt) az érintett teszt-fájl(ok)ra és a
-   teljes suite-ra, PASS/FAIL összegzéssel.
-4. **Scope check**: pontosan mely fájlok változtak, és igazolás, hogy ez
-   megegyezik az engedélyezett fájlkörrel — semmi extra nem módosult.
-5. `git log --oneline <base>..<branch>`.
+Every task response must include these 5 items, but keep them compact:
 
-Ha bármelyik pont hiányzik, a reviewer újra fogja kérni — ezért ne hagyd ki
-egyiket sem, akkor sem, ha ettől a válasz hosszú lesz.
+1. **Full diff** — unchanged requirement, this is the primary review artifact.
+2. **Checklist** — one line per required item: done/not done + file:line.
+3. **Test evidence** — run the full suite, but only report:
+   - the command used,
+   - the final summary line (e.g. `54 passed, 0 failed, 4 warnings`),
+   - FULL verbose output for any test that is NEW in this branch,
+   - FULL verbose output for any FAILURE.
+   Do NOT paste the full list of pre-existing PASSED tests — the summary
+   line is sufficient proof they still pass.
+4. **Scope check** — one line: which files changed, confirmation nothing
+   else touched.
+5. **git log --oneline <base>..<branch>** — one line per commit.
+
+## Tiering
+- **Mechanical changes** (deletion of confirmed-dead code, import cleanup,
+  dependency bumps, config-only additions with no behavior change): items
+  1–5 above, minimal prose, no extra discussion needed.
+- **Logic changes** (business logic, prompts, SQL, data models, anything
+  affecting runtime behavior): same 5 items, plus a short paragraph noting
+  any edge cases considered or explicitly out of scope.
+
+This protocol is loaded automatically from AGENTS.md — individual prompts
+do not need to restate it in full. A one-line tag "[lean output protocol]"
+at the top of a prompt is enough as a reminder for time-pressured runs.
 
 ## Testing Protocols
 Tests must be run from the `backend/` directory, with these env vars set
