@@ -16,3 +16,4 @@ python-multipart>=0.0.9
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pyzipper
+defusedxml>=0.7.1
