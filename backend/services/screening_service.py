@@ -26,6 +26,7 @@ class ScreeningRule:
         max_age: Maximum age for the recommendation.
         sex_filter: If set, rule only applies to this sex ("male"/"female").
         family_trigger: List of condition keywords that trigger this rule if found in family history.
+        lab_trigger: List of normalised lab test keys that trigger this rule if flagged out of range.
         urgency: Level of urgency ("routine", "soon", "urgent").
         specialist: The type of medical specialist recommended.
     """
@@ -34,6 +35,7 @@ class ScreeningRule:
     max_age: int
     sex_filter: Optional[str] = None
     family_trigger: Optional[List[str]] = None
+    lab_trigger: Optional[List[str]] = None
     urgency: str = "routine"
     specialist: str = "GP"
 
@@ -47,6 +49,7 @@ SCREENING_RULES: List[ScreeningRule] = [
         25,
         34,
         family_trigger=["diabetes"],
+        lab_trigger=["glucose", "hba1c"],
         specialist="Endocrinologist",
     ),
     ScreeningRule(
@@ -54,6 +57,7 @@ SCREENING_RULES: List[ScreeningRule] = [
         20,
         999,
         family_trigger=["cardiovascular disease", "heart attack"],
+        lab_trigger=["total_cholesterol", "ldl_cholesterol"],
         specialist="Cardiologist",
     ),
     ScreeningRule(
@@ -152,6 +156,7 @@ class ScreeningService:
         recs: list[ScreeningRecommendation] = []
         seen_conditions: set[str] = set()
         fam_lower = [c.lower() for c in family_history_conditions]
+        lab_lower = [k.lower() for k in flagged_lab_keys]
 
         for rule in SCREENING_RULES:
             # Age filter
@@ -160,14 +165,27 @@ class ScreeningService:
             # Sex filter
             if rule.sex_filter and sex.lower() != rule.sex_filter:
                 continue
-            # Family history trigger
-            if rule.family_trigger:
-                if not any(
-                    trigger.lower() in cond
-                    for trigger in rule.family_trigger
-                    for cond in fam_lower
-                ):
-                    continue
+
+            # Activation triggers. A rule that declares triggers (family or
+            # lab) is only included when at least one trigger matches; the
+            # two trigger types are alternative activation paths. A rule with
+            # no triggers always passes, preserving its previous behaviour.
+            matched_family = [
+                cond
+                for cond in fam_lower
+                if rule.family_trigger
+                and any(t.lower() in cond for t in rule.family_trigger)
+            ]
+            matched_labs = [
+                key
+                for key in lab_lower
+                if rule.lab_trigger
+                and any(t.lower() == key for t in rule.lab_trigger)
+            ]
+            if (rule.family_trigger or rule.lab_trigger) and not (
+                matched_family or matched_labs
+            ):
+                continue
 
             if rule.condition in seen_conditions:
                 continue
@@ -183,7 +201,9 @@ class ScreeningService:
             recs.append(
                 ScreeningRecommendation(
                     test_name=rule.condition,
-                    reason=self._build_reason(rule.condition, age, sex, fam_lower),
+                    reason=self._build_reason(
+                        rule.condition, age, sex, matched_family, matched_labs
+                    ),
                     urgency=rule.urgency,
                     specialist=rule.specialist,
                     medlineplus_url=ml_info.get("url"),
@@ -223,7 +243,11 @@ class ScreeningService:
 
     @staticmethod
     def _build_reason(
-        condition: str, age: int, sex: str, fam_conditions: list[str]
+        condition: str,
+        age: int,
+        sex: str,
+        fam_conditions: list[str],
+        lab_keys: Optional[list[str]] = None,
     ) -> str:
         """Compose a human-readable reason string."""
         fam_str = (
@@ -231,8 +255,13 @@ class ScreeningService:
             if fam_conditions
             else ""
         )
+        lab_str = (
+            f" Flagged lab results: {', '.join(lab_keys[:3])}."
+            if lab_keys
+            else ""
+        )
         return (
-            f"USPSTF recommends {condition} for {sex}s aged {age}.{fam_str} "
+            f"USPSTF recommends {condition} for {sex}s aged {age}.{fam_str}{lab_str} "
             "Please consult your doctor to confirm."
         )
 
