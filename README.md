@@ -1,5 +1,7 @@
 # 🏥 Health Assistant
 
+[![CI](https://github.com/edeszarka/health_assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/edeszarka/health_assistant/actions/workflows/ci.yml)
+
 > **A local-first personal health intelligence assistant powered by Llama 3.2, PostgreSQL/pgvector, and Streamlit.**
 
 > ⚠️ **Disclaimer**: This software is for **informational purposes only**. It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional.
