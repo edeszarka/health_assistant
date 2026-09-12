@@ -44,10 +44,16 @@ async def upload_pdf(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files accepted.")
 
+    # Keep the original filename in memory for the user-facing response only.
+    # Persisted identifiers must not embed it: an uploaded filename can contain
+    # the patient's real name.
+    original_filename = file.filename
+    upload_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}"
+
     content = await file.read()
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
-    saved_path = upload_dir / f"{uuid.uuid4().hex}_{file.filename}"
+    saved_path = upload_dir / f"{upload_id}.pdf"
     saved_path.write_bytes(content)
 
     try:
@@ -81,7 +87,7 @@ async def upload_pdf(
                 ref_range_high=ref_high,
                 is_flagged=is_flagged,
                 test_date=test_date,
-                source_filename=file.filename,
+                source_filename=upload_id,
             )
             db.add(row)
             await db.flush()
@@ -98,8 +104,8 @@ async def upload_pdf(
             continue
 
     await db.commit()
-    print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {file.filename}")
-    return {"filename": file.filename, "extracted": len(report.results), "stored": stored}
+    print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {upload_id}")
+    return {"filename": original_filename, "extracted": len(report.results), "stored": stored}
 
 
 @router.post("/samsung")

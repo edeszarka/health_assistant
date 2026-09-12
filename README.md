@@ -250,8 +250,12 @@ Production deployment would require GPU inference or a hosted model endpoint.
 data changes. For append-only health data this is acceptable; production would require
 an embedding refresh pipeline.
 
-**PII handling**: Birth date is stored locally in plaintext. Production
-deployment would require field-level encryption and a clear data retention policy.
+**PII handling**: Uploaded lab PDFs are retained verbatim on disk under
+`uploads/`, and the `LabResult.source_filename` column stores only a generated
+upload identifier (timestamp + UUID) — never the original filename, which could
+embed the patient's name. The retained PDF itself can still contain the
+patient's name and other identifiers in plaintext, so production deployment
+would require field-level encryption and a clear data retention policy.
 
 ## Roadmap (Planned / Not yet implemented)
 
