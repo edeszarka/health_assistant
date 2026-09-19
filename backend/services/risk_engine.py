@@ -104,6 +104,9 @@ class RiskEngine:
         5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
         13: 12, 14: 16, 15: 20, 16: 25,
     }
+    # CAVEAT: this is currently a copy of the male table and must be replaced
+    # with the published Wilson et al. 1998 women's table before the female
+    # score can be trusted. Documented in README Known Limitations.
     _FRAMINGHAM_RISK_FEMALE = {
         -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
         5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,

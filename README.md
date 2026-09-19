@@ -149,7 +149,7 @@ API docs available at: **http://localhost:8000/docs**
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
 | LLM | Ollama — llama3.2:3b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
-| Orchestration | LangChain, langchain-ollama |
+| Orchestration | None — direct Ollama REST calls via httpx |
 | Parsing | pdfplumber, pyzipper |
 | External API | MedlinePlus Web Service (NIH, no key) |
 | Testing | pytest, pytest-asyncio, httpx |
@@ -256,6 +256,21 @@ upload identifier (timestamp + UUID) — never the original filename, which coul
 embed the patient's name. The retained PDF itself can still contain the
 patient's name and other identifiers in plaintext, so production deployment
 would require field-level encryption and a clear data retention policy.
+
+**Lab units are explicit, never guessed**: risk-score inputs from Hungarian lab
+PDFs are converted to mg/dL only when the stored unit is recognised. Conversion
+is supported for total cholesterol, LDL, HDL, triglycerides and glucose. A value
+with a missing or unrecognised unit is skipped rather than assumed, so a risk
+score may be unavailable instead of wrong.
+
+**Female Framingham table is a placeholder**: `_FRAMINGHAM_RISK_FEMALE` in
+`backend/services/risk_engine.py` is currently a copy of the male
+points-to-risk table. It must be replaced with the published Wilson et al. 1998
+women's table before the female 10-year score can be trusted.
+
+**FINDRISC activity is assumed**: the calculator still assumes 30 minutes of
+daily physical activity instead of deriving it from the stored wearable step
+data, which can over- or under-state the diabetes risk score.
 
 ## Roadmap (Planned / Not yet implemented)
 
