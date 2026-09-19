@@ -3,6 +3,20 @@
 from __future__ import annotations
 
 
+# AHA 2017 blood-pressure category cut-offs in mmHg.
+# Source: Whelton et al., "2017 ACC/AHA Guideline for the Prevention, Detection,
+# Evaluation, and Management of High Blood Pressure in Adults", Hypertension
+# 2018;71:e13-e115. Each constant marks the lower bound of its category.
+AHA_SYSTOLIC_ELEVATED = 120
+AHA_DIASTOLIC_ELEVATED = 80
+AHA_SYSTOLIC_STAGE_1 = 130
+AHA_DIASTOLIC_STAGE_1 = 80
+AHA_SYSTOLIC_STAGE_2 = 140
+AHA_DIASTOLIC_STAGE_2 = 90
+AHA_SYSTOLIC_CRISIS = 180
+AHA_DIASTOLIC_CRISIS = 120
+
+
 class RiskEngine:
     """Calculates cardiovascular, diabetes, and blood-pressure risk scores."""
 
@@ -90,6 +104,9 @@ class RiskEngine:
         5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
         13: 12, 14: 16, 15: 20, 16: 25,
     }
+    # CAVEAT: this is currently a copy of the male table and must be replaced
+    # with the published Wilson et al. 1998 women's table before the female
+    # score can be trusted. Documented in README Known Limitations.
     _FRAMINGHAM_RISK_FEMALE = {
         -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
         5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
@@ -109,11 +126,14 @@ class RiskEngine:
     ) -> dict:
         """Calculate 10-year cardiovascular risk using Framingham Point Score.
 
+        The point tables are the Wilson et al. 1998 mg/dL tables, so both
+        cholesterol inputs MUST be supplied in mg/dL.
+
         Args:
             age: Patient age in years.
             sex: The biological sex of the patient ("male" or "female").
-            total_cholesterol: Total cholesterol level in mg/dL.
-            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL.
+            total_cholesterol: Total cholesterol level in mg/dL (NOT mmol/L).
+            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL (NOT mmol/L).
             systolic_bp: Systolic blood pressure reading in mmHg.
             bp_treated: True if the patient is on antihypertensive medication.
             diabetes: True if the patient has a diagnosis of diabetes.
@@ -121,7 +141,24 @@ class RiskEngine:
 
         Returns:
             Dict containing score_points, risk_percent, and risk_category.
+
+        Raises:
+            ValueError: If a cholesterol value is below the physiological floor
+                for mg/dL, which usually means it was passed in as mmol/L.
         """
+        # Non-physiological in mg/dL; a value this low most likely means the
+        # caller supplied mmol/L. Refuse rather than produce a wrong score.
+        if total_cholesterol < 50:
+            raise ValueError(
+                f"total_cholesterol={total_cholesterol} looks like mmol/L, "
+                "expected mg/dL; convert the value before scoring."
+            )
+        if hdl_cholesterol < 10:
+            raise ValueError(
+                f"hdl_cholesterol={hdl_cholesterol} looks like mmol/L, "
+                "expected mg/dL; convert the value before scoring."
+            )
+
         is_male = sex.lower() == "male"
         points = 0
 
@@ -265,6 +302,14 @@ class RiskEngine:
     def classify_blood_pressure(self, systolic: int, diastolic: int) -> dict:
         """Classify blood pressure per AHA 2017 guidelines.
 
+        Categories are evaluated most-severe-first so that a single severely
+        elevated component cannot be masked by the other being normal.
+
+        Note:
+            The AHA chart wording is "higher than 180/120", but this
+            implementation treats exactly 180/120 as crisis (``>=``),
+            deliberately erring toward urgency in a health context.
+
         Args:
             systolic: Systolic pressure in mmHg.
             diastolic: Diastolic pressure in mmHg.
@@ -272,35 +317,38 @@ class RiskEngine:
         Returns:
             Dict with category, action, and optional specialist.
         """
-        if systolic < 120 and diastolic < 80:
+        if systolic >= AHA_SYSTOLIC_CRISIS or diastolic >= AHA_DIASTOLIC_CRISIS:
             return {
-                "category": "Normal",
-                "action": "Maintain healthy lifestyle.",
-                "specialist": None,
+                "category": "Hypertensive Crisis",
+                "action": "Seek immediate medical attention.",
+                "specialist": "Emergency Medicine",
             }
-        elif systolic < 130 and diastolic < 80:
-            return {
-                "category": "Elevated",
-                "action": "Lifestyle changes recommended.",
-                "specialist": "GP",
-            }
-        elif systolic < 140 or diastolic < 90:
-            return {
-                "category": "Stage 1 Hypertension",
-                "action": "Lifestyle changes; consider medication.",
-                "specialist": "GP",
-            }
-        elif systolic < 180 or diastolic < 120:
+        elif systolic >= AHA_SYSTOLIC_STAGE_2 or diastolic >= AHA_DIASTOLIC_STAGE_2:
             return {
                 "category": "Stage 2 Hypertension",
                 "action": "Medication likely needed; see your doctor soon.",
                 "specialist": "Cardiologist",
             }
+        elif systolic >= AHA_SYSTOLIC_STAGE_1 or diastolic >= AHA_DIASTOLIC_STAGE_1:
+            return {
+                "category": "Stage 1 Hypertension",
+                "action": "Lifestyle changes; consider medication.",
+                "specialist": "GP",
+            }
+        elif (
+            systolic >= AHA_SYSTOLIC_ELEVATED
+            and diastolic < AHA_DIASTOLIC_ELEVATED
+        ):
+            return {
+                "category": "Elevated",
+                "action": "Lifestyle changes recommended.",
+                "specialist": "GP",
+            }
         else:
             return {
-                "category": "Hypertensive Crisis",
-                "action": "Seek immediate medical attention.",
-                "specialist": "Emergency Medicine",
+                "category": "Normal",
+                "action": "Maintain healthy lifestyle.",
+                "specialist": None,
             }
 
     # ── Utilities ────────────────────────────────────────────────────────────

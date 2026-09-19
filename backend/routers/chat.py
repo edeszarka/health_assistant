@@ -1,6 +1,7 @@
 """Chat router: RAG-augmented LLM conversation with direct DB data injection."""
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
@@ -18,11 +19,13 @@ from models.db_models import (
     LabResult,
     BloodPressureReading,
     FamilyHistory,
-    RiskScore,
 )
 from services.rag_service import rag_service
 from services.llm_service import llm_service
 from services.risk_engine import risk_engine
+from services.risk_score_service import compute_baseline_scores
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -451,7 +454,10 @@ async def _build_risk_scores(
     profile: Optional[UserProfile],
     user_message: str = "",
 ) -> Dict[str, Any]:
-    """Calculate FINDRISC and fetch Framingham risk scores, including hypothetical overrides.
+    """Compute baseline FINDRISC/Framingham scores and hypothetical overrides.
+
+    Baseline scores are computed and persisted by ``compute_baseline_scores``;
+    the hypothetical overrides below are computed only in memory.
 
     Args:
         db: Async database session.
@@ -503,35 +509,18 @@ async def _build_risk_scores(
         if weight_kg and profile and profile.height_cm:
             bmi_from_db = weight_kg / ((profile.height_cm / 100) ** 2)
 
-        # ── 1. Base FINDRISC from profile ─────────────────────────────────────
-        if profile:
-            fam_diabetes = "first_degree" if getattr(profile, "family_diabetes", False) else "none"
-            findrisc = risk_engine.calculate_findrisc(
-                age=profile.age,
-                sex=profile.sex,
-                waist_cm=getattr(profile, "waist_cm", None),
-                bmi=bmi_from_db,
-                physical_activity_mins_per_day=30.0,
-                vegetables_daily=getattr(profile, "vegetables_daily", False),
-                hypertension_medication=getattr(profile, "bp_medication", False),
-                high_glucose_history=getattr(profile, "high_glucose_history", False),
-                family_history_diabetes=fam_diabetes,
-            )
-            scores["findrisc_score"] = findrisc["score"]
-            scores["findrisc_category"] = findrisc["risk_category"]
+        # ── 1. Baseline scores: computed and persisted by the shared service ──
+        fam_diabetes = "first_degree" if getattr(profile, "family_diabetes", False) else "none"
+        baseline = await compute_baseline_scores(db, profile)
+        if baseline.get("findrisc_score") is not None:
+            scores["findrisc_score"] = baseline["findrisc_score"]
+            scores["findrisc_category"] = baseline["findrisc_category"]
+        if baseline.get("framingham_risk_percent") is not None:
+            scores["framingham_risk_percent"] = baseline["framingham_risk_percent"]
 
-        # ── 2. Base Framingham from RiskScore table ───────────────────────────
-        res = await db.execute(
-            select(RiskScore)
-            .where(RiskScore.score_type == "framingham")
-            .order_by(RiskScore.calculated_at.desc())
-            .limit(1)
-        )
-        rs_fram = res.scalar_one_or_none()
-        if rs_fram:
-            scores["framingham_risk_percent"] = rs_fram.score_value
-
-        # ── 3. Detect hypothetical inputs in user message ─────────────────────
+        # ── 2. Detect hypothetical inputs in user message ─────────────────────
+        # Hypotheticals are NOT measurements and must never be persisted; all
+        # recalculation below stays local to this function's return value.
         msg = user_message.lower()
         # Only run hypothetical detection if message contains hypothetical language
         HYPOTHETICAL_TRIGGERS = {
@@ -628,7 +617,7 @@ async def _build_risk_scores(
                     )
 
     except Exception as e:
-        print(f"Error calculating risk scores: {e}")
+        logger.error("Error calculating risk scores: %s", e)
     return scores
 
 

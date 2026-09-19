@@ -6,7 +6,7 @@ This project is a local-first personal health intelligence assistant that uses A
 - **Architecture**: Microservices-based with a FastAPI backend, Streamlit frontend, and PostgreSQL (with pgvector) database.
 - **Core Technologies**:
     - **Backend**: Python 3.12, FastAPI, SQLAlchemy (Async), Alembic, Pydantic v2.
-    - **AI/LLM**: LangChain, Ollama (llama3.2:3b for chat, nomic-embed-text for embeddings).
+    - **AI/LLM**: Ollama (llama3.2:3b for chat, nomic-embed-text for embeddings).
     - **Frontend**: Streamlit, Pandas, Plotly.
     - **Database**: PostgreSQL 16 + `pgvector` for semantic search/RAG.
     - **Parsing**: `pdfplumber` (Labs), `pyzipper` (Zepp Life), custom Samsung Health parsers.
@@ -58,6 +58,7 @@ pytest tests/ -v
 
 ### Extending the System
 - **Lab Normalization**: Add new Hungarian/Latin mapping strings to `KNOWN_MAPPINGS` in `backend/ingestion/lab_normalizer.py`.
+- **Unit Conversions**: Add new mmol/L → mg/dL conversion factors to `MOLAR_MASS_FACTORS` in `backend/ingestion/unit_converter.py`.
 - **Screening Rules**: Add new recommendation tuples to `SCREENING_RULES` in `backend/services/screening_service.py`. Rules support `family_trigger` and `lab_trigger` as alternative (OR) activation paths — a rule with neither always applies within its age/sex range, while a rule with either fires when at least one trigger matches.
 - **New Routers**: Register new FastAPI routers in `backend/main.py`.
 

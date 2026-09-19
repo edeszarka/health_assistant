@@ -1,4 +1,9 @@
-"""LangChain + Ollama RAG service with pgvector similarity search."""
+"""Ollama-backed RAG service with pgvector similarity search.
+
+Embeddings are requested directly from the Ollama REST API via httpx and
+stored/queried in PostgreSQL through pgvector; no orchestration framework is
+used.
+"""
 
 from __future__ import annotations
 
