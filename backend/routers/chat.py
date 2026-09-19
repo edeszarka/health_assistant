@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
+from ingestion.unit_converter import lab_unit_converter
 from models.api_models import ChatRequest, ChatResponse
 from models.db_models import (
     UserProfile,
@@ -470,17 +471,37 @@ async def _build_risk_scores(
     scores: Dict[str, Any] = {}
     fam_diabetes = "none" 
     
-    async def _get_lab(test_name: str) -> Optional[float]:
-        """Fetch the latest numeric value for a specific lab test."""
-        res = await db.execute(
-            select(LabResult.value)
-            .where(LabResult.test_name == test_name)
-            .where(LabResult.test_date.isnot(None))
-            .order_by(LabResult.test_date.desc())
-            .limit(1)
-        )
-        row = res.scalar_one_or_none()
-        return float(row) if row is not None else None
+    async def _get_lab_mg_dl(
+        canonical: str, fallback: str
+    ) -> tuple[Optional[float], Optional[str]]:
+        """Fetch a lab value converted to mg/dL using the row's own unit.
+
+        Args:
+            canonical: Normalised test name used for the conversion factor.
+            fallback: Legacy test name tried when the canonical one has no rows.
+
+        Returns:
+            ``(value_mg_dl, None)`` on success, ``(None, reason)`` when a row
+            exists but its unit cannot be converted, or ``(None, None)`` when
+            no row exists at all.
+        """
+        for test_name in (canonical, fallback):
+            res = await db.execute(
+                select(LabResult.value, LabResult.unit)
+                .where(LabResult.test_name == test_name)
+                .where(LabResult.test_date.isnot(None))
+                .order_by(LabResult.test_date.desc())
+                .limit(1)
+            )
+            row = res.fetchone()
+            if row is not None:
+                converted = lab_unit_converter.to_mg_dl(
+                    canonical, float(row[0]), row[1]
+                )
+                if converted is None:
+                    return None, f"{canonical} (stored unit: {row[1] or 'missing'})"
+                return converted, None
+        return None, None
 
     async def _get_latest_systolic() -> Optional[int]:
         """Fetch the latest systolic blood pressure reading."""
@@ -588,10 +609,26 @@ async def _build_risk_scores(
                 fram_labels.append(f"systolic_bp={val}")
 
             if fram_labels and profile:
-                tc    = fram_overrides.get("total_cholesterol") or await _get_lab("total_cholesterol") or await _get_lab("cholesterol")
-                hdl   = fram_overrides.get("hdl_cholesterol")  or await _get_lab("hdl_cholesterol")  or await _get_lab("hdl")
-                sys_bp = fram_overrides.get("systolic_bp")     or await _get_latest_systolic()
+                # Fallback lab values are converted from each row's own unit;
+                # a row whose unit cannot be converted is reported explicitly
+                # rather than silently tripping the risk engine's mg/dL guard.
+                tc = fram_overrides.get("total_cholesterol")
+                tc_issue = None
+                if tc is None:
+                    tc, tc_issue = await _get_lab_mg_dl(
+                        "total_cholesterol", "cholesterol"
+                    )
 
+                hdl = fram_overrides.get("hdl_cholesterol")
+                hdl_issue = None
+                if hdl is None:
+                    hdl, hdl_issue = await _get_lab_mg_dl("hdl_cholesterol", "hdl")
+
+                sys_bp = fram_overrides.get("systolic_bp")
+                if sys_bp is None:
+                    sys_bp = await _get_latest_systolic()
+
+                conversion_issues = [issue for issue in (tc_issue, hdl_issue) if issue]
                 if tc and hdl and sys_bp:
                     g = risk_engine.calculate_framingham(
                         age=profile.age,
@@ -606,6 +643,12 @@ async def _build_risk_scores(
                     scores["framingham_hypothetical"] = (
                         f"{g['risk_percent']}% 10-yr CV risk ({g['risk_category']}) "
                         f"— recalculated with {', '.join(fram_labels)}"
+                    )
+                elif conversion_issues:
+                    scores["framingham_hypothetical"] = (
+                        "Cannot recalculate: could not convert "
+                        + ", ".join(conversion_issues)
+                        + " to mg/dL from the stored lab unit."
                     )
                 else:
                     missing = []
