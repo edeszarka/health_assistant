@@ -123,11 +123,14 @@ class RiskEngine:
     ) -> dict:
         """Calculate 10-year cardiovascular risk using Framingham Point Score.
 
+        The point tables are the Wilson et al. 1998 mg/dL tables, so both
+        cholesterol inputs MUST be supplied in mg/dL.
+
         Args:
             age: Patient age in years.
             sex: The biological sex of the patient ("male" or "female").
-            total_cholesterol: Total cholesterol level in mg/dL.
-            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL.
+            total_cholesterol: Total cholesterol level in mg/dL (NOT mmol/L).
+            hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL (NOT mmol/L).
             systolic_bp: Systolic blood pressure reading in mmHg.
             bp_treated: True if the patient is on antihypertensive medication.
             diabetes: True if the patient has a diagnosis of diabetes.
@@ -135,7 +138,24 @@ class RiskEngine:
 
         Returns:
             Dict containing score_points, risk_percent, and risk_category.
+
+        Raises:
+            ValueError: If a cholesterol value is below the physiological floor
+                for mg/dL, which usually means it was passed in as mmol/L.
         """
+        # Non-physiological in mg/dL; a value this low most likely means the
+        # caller supplied mmol/L. Refuse rather than produce a wrong score.
+        if total_cholesterol < 50:
+            raise ValueError(
+                f"total_cholesterol={total_cholesterol} looks like mmol/L, "
+                "expected mg/dL; convert the value before scoring."
+            )
+        if hdl_cholesterol < 10:
+            raise ValueError(
+                f"hdl_cholesterol={hdl_cholesterol} looks like mmol/L, "
+                "expected mg/dL; convert the value before scoring."
+            )
+
         is_male = sex.lower() == "male"
         points = 0
 

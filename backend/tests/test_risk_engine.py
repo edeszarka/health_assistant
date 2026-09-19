@@ -47,6 +47,28 @@ def test_framingham_returns_required_keys(engine):
     assert {"score_points", "risk_percent", "risk_category"} == set(result.keys())
 
 
+def test_framingham_rejects_mmol_l_total_cholesterol(engine):
+    """A mmol/L-looking total cholesterol must raise instead of scoring wrongly."""
+    with pytest.raises(ValueError, match="total_cholesterol"):
+        engine.calculate_framingham(
+            age=50, sex="male",
+            total_cholesterol=5.2, hdl_cholesterol=50,
+            systolic_bp=120, bp_treated=False,
+            diabetes=False, smoker=False,
+        )
+
+
+def test_framingham_rejects_mmol_l_hdl(engine):
+    """A mmol/L-looking HDL must raise instead of scoring wrongly."""
+    with pytest.raises(ValueError, match="hdl_cholesterol"):
+        engine.calculate_framingham(
+            age=50, sex="male",
+            total_cholesterol=200, hdl_cholesterol=1.3,
+            systolic_bp=120, bp_treated=False,
+            diabetes=False, smoker=False,
+        )
+
+
 # ── FINDRISC ──────────────────────────────────────────────────────────────────
 
 def test_findrisc_low_score(engine):
