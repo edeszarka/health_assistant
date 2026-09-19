@@ -115,3 +115,33 @@ def test_bp_stage2(engine):
 def test_bp_crisis(engine):
     result = engine.classify_blood_pressure(185, 125)
     assert result["category"] == "Hypertensive Crisis"
+
+
+@pytest.mark.parametrize(
+    "systolic,diastolic,expected",
+    [
+        (119, 79, "Normal"),
+        (120, 79, "Elevated"),
+        (129, 79, "Elevated"),
+        (119, 80, "Stage 1 Hypertension"),
+        (130, 79, "Stage 1 Hypertension"),
+        (139, 89, "Stage 1 Hypertension"),
+        (140, 85, "Stage 2 Hypertension"),
+        (135, 90, "Stage 2 Hypertension"),
+        (160, 85, "Stage 2 Hypertension"),
+        (179, 119, "Stage 2 Hypertension"),
+        (180, 119, "Hypertensive Crisis"),
+        (179, 120, "Hypertensive Crisis"),
+        (185, 85, "Hypertensive Crisis"),
+        (200, 100, "Hypertensive Crisis"),
+    ],
+)
+def test_bp_category_boundaries(engine, systolic, diastolic, expected):
+    """AHA category boundaries are evaluated most-severe-first."""
+    assert engine.classify_blood_pressure(systolic, diastolic)["category"] == expected
+
+
+def test_bp_high_systolic_with_low_diastolic_is_not_stage_1(engine):
+    """Regression: a low diastolic must not downgrade a severe systolic value."""
+    assert engine.classify_blood_pressure(185, 85)["category"] == "Hypertensive Crisis"
+    assert engine.classify_blood_pressure(160, 85)["category"] == "Stage 2 Hypertension"

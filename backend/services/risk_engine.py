@@ -3,6 +3,20 @@
 from __future__ import annotations
 
 
+# AHA 2017 blood-pressure category cut-offs in mmHg.
+# Source: Whelton et al., "2017 ACC/AHA Guideline for the Prevention, Detection,
+# Evaluation, and Management of High Blood Pressure in Adults", Hypertension
+# 2018;71:e13-e115. Each constant marks the lower bound of its category.
+AHA_SYSTOLIC_ELEVATED = 120
+AHA_DIASTOLIC_ELEVATED = 80
+AHA_SYSTOLIC_STAGE_1 = 130
+AHA_DIASTOLIC_STAGE_1 = 80
+AHA_SYSTOLIC_STAGE_2 = 140
+AHA_DIASTOLIC_STAGE_2 = 90
+AHA_SYSTOLIC_CRISIS = 180
+AHA_DIASTOLIC_CRISIS = 120
+
+
 class RiskEngine:
     """Calculates cardiovascular, diabetes, and blood-pressure risk scores."""
 
@@ -265,6 +279,14 @@ class RiskEngine:
     def classify_blood_pressure(self, systolic: int, diastolic: int) -> dict:
         """Classify blood pressure per AHA 2017 guidelines.
 
+        Categories are evaluated most-severe-first so that a single severely
+        elevated component cannot be masked by the other being normal.
+
+        Note:
+            The AHA chart wording is "higher than 180/120", but this
+            implementation treats exactly 180/120 as crisis (``>=``),
+            deliberately erring toward urgency in a health context.
+
         Args:
             systolic: Systolic pressure in mmHg.
             diastolic: Diastolic pressure in mmHg.
@@ -272,35 +294,38 @@ class RiskEngine:
         Returns:
             Dict with category, action, and optional specialist.
         """
-        if systolic < 120 and diastolic < 80:
+        if systolic >= AHA_SYSTOLIC_CRISIS or diastolic >= AHA_DIASTOLIC_CRISIS:
             return {
-                "category": "Normal",
-                "action": "Maintain healthy lifestyle.",
-                "specialist": None,
+                "category": "Hypertensive Crisis",
+                "action": "Seek immediate medical attention.",
+                "specialist": "Emergency Medicine",
             }
-        elif systolic < 130 and diastolic < 80:
-            return {
-                "category": "Elevated",
-                "action": "Lifestyle changes recommended.",
-                "specialist": "GP",
-            }
-        elif systolic < 140 or diastolic < 90:
-            return {
-                "category": "Stage 1 Hypertension",
-                "action": "Lifestyle changes; consider medication.",
-                "specialist": "GP",
-            }
-        elif systolic < 180 or diastolic < 120:
+        elif systolic >= AHA_SYSTOLIC_STAGE_2 or diastolic >= AHA_DIASTOLIC_STAGE_2:
             return {
                 "category": "Stage 2 Hypertension",
                 "action": "Medication likely needed; see your doctor soon.",
                 "specialist": "Cardiologist",
             }
+        elif systolic >= AHA_SYSTOLIC_STAGE_1 or diastolic >= AHA_DIASTOLIC_STAGE_1:
+            return {
+                "category": "Stage 1 Hypertension",
+                "action": "Lifestyle changes; consider medication.",
+                "specialist": "GP",
+            }
+        elif (
+            systolic >= AHA_SYSTOLIC_ELEVATED
+            and diastolic < AHA_DIASTOLIC_ELEVATED
+        ):
+            return {
+                "category": "Elevated",
+                "action": "Lifestyle changes recommended.",
+                "specialist": "GP",
+            }
         else:
             return {
-                "category": "Hypertensive Crisis",
-                "action": "Seek immediate medical attention.",
-                "specialist": "Emergency Medicine",
+                "category": "Normal",
+                "action": "Maintain healthy lifestyle.",
+                "specialist": None,
             }
 
     # ── Utilities ────────────────────────────────────────────────────────────
