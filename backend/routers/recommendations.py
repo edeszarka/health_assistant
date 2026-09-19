@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db
 from models.api_models import ScreeningRecommendation
-from models.db_models import UserProfile, FamilyHistory, LabResult, RiskScore
+from models.db_models import UserProfile, FamilyHistory, LabResult
+from services.risk_score_service import compute_baseline_scores
 from services.screening_service import screening_service
 
 router = APIRouter()
@@ -38,15 +39,10 @@ async def get_recommendations(db: AsyncSession = Depends(get_db)) -> list[Screen
     )
     flagged_keys = list({row[0] for row in result.fetchall()})
 
-    # Latest risk scores
-    framingham_pct = None
-    findrisc_pts = None
-    result = await db.execute(select(RiskScore).order_by(RiskScore.calculated_at.desc()).limit(20))
-    for rs in result.scalars().all():
-        if rs.score_type == "framingham" and framingham_pct is None:
-            framingham_pct = rs.score_value
-        elif rs.score_type == "findrisc" and findrisc_pts is None:
-            findrisc_pts = int(rs.score_value)
+    # Baseline risk scores — computed and persisted by the shared service
+    risk_scores = await compute_baseline_scores(db, profile)
+    framingham_pct = risk_scores.get("framingham_risk_percent")
+    findrisc_pts = risk_scores.get("findrisc_score")
 
     return await screening_service.get_recommendations(
         age=age,
