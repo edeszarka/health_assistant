@@ -40,7 +40,7 @@
 
 ## Features
 
-- 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); LLM extracts and normalises lab values
+- 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); a deterministic pdfplumber + regex parser extracts values for dictionary-based normalisation, and any parsing warnings are surfaced in the UI
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
 - 📱 **Samsung Health Import** – Robust ZIP parser for steps, sleep, heart rate, and body metrics; handles subfolder exports, prevents duplicates, and includes detailed logging for troubleshooting.
@@ -93,7 +93,7 @@ API docs available at: **http://localhost:8000/docs**
 1. Go to **📂 Upload** in the sidebar
 2. Select the "Lab PDF" tab
 3. Upload your PDF (supports Hungarian, Latin, or English medical terminology)
-4. Click **Process PDF** — the AI extracts all values automatically
+4. Click **Process PDF** — values are parsed and normalised automatically (no LLM involved); any parsing warnings appear below the result
 
 ### Log Blood Pressure
 1. Go to **💉 Blood Pressure**
@@ -189,7 +189,7 @@ unmapped entries. No LLM is involved in this path.
 
 ## Development
 
-> 💡 **Developer Tip**: The Docker setup includes volume mounts for `backend/` and `frontend/`. Changes made locally are reflected immediately inside the containers (hot-reloading), allowing for seamless testing without rebuilding images.
+> 💡 **Developer Tip**: Docker bind-mounts `backend/` into the backend container and runs uvicorn with `--reload`, so backend changes are reflected immediately without rebuilding. The frontend is baked into its image with no mount or reload, so frontend changes require `docker-compose up -d --build frontend`.
 
 ### Run tests
 ```bash
@@ -204,13 +204,20 @@ pytest tests/ -v
 ### Run backend locally (without Docker)
 ```bash
 cd backend
-DATABASE_URL=postgresql+asyncpg://... OLLAMA_BASE_URL=http://localhost:11434 uvicorn main:app --reload
+DATABASE_URL=postgresql+asyncpg://... SYNC_DATABASE_URL=postgresql+psycopg2://... OLLAMA_BASE_URL=http://localhost:11434 uvicorn main:app --reload
 ```
 
 ### Add a new lab normalisation mapping
 Edit `backend/ingestion/lab_normalizer.py` → add to `KNOWN_MAPPINGS`:
 ```python
 "your raw name": "standard_key",
+```
+
+### Add a new lab unit conversion
+Edit `backend/ingestion/unit_converter.py` → add the mmol/L → mg/dL factor to
+`MOLAR_MASS_FACTORS` (document the molar-mass source next to it):
+```python
+"your_test_name": 12.34,  # source: molar mass / conversion table
 ```
 
 ### Generate a new Alembic migration
@@ -235,9 +242,14 @@ fires when at least one trigger matches.
 **Single-user, local-only**: Deliberately designed for personal use on a local machine.
 No data leaves the host. Multi-tenancy would require auth and user_id FKs on all tables.
 
-**PDF parsing brittleness**: Dictionary-based normalization covers known Hungarian/Latin
-names, but provider-specific abbreviations and layouts remain a known failure mode.
-Production would require a human review step for parsed values.
+**PDF parsing brittleness**: Two real-world layouts are supported — the EESZT
+numbered/LOINC tabular format and the legacy/Corden format — including colon-less
+rows, comma/dot decimals, `magas`/`alacsony`/`*` flags, and open-ended ranges.
+Dictionary-based normalization covers known Hungarian/Latin names, but
+provider-specific abbreviations and further layout variants remain a known failure
+mode; rows that cannot be parsed (qualitative or inequality-bounded results) are
+skipped and reported via the upload `warnings` list. Production would require a
+human review step for parsed values.
 
 **No human-in-the-loop for parsed data**: Automated parsing of medical values without
 verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
