@@ -105,7 +105,12 @@ async def upload_pdf(
 
     await db.commit()
     print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {upload_id}")
-    return {"filename": original_filename, "extracted": len(report.results), "stored": stored}
+    return {
+        "filename": original_filename,
+        "extracted": len(report.results),
+        "stored": stored,
+        "warnings": report.parse_errors,
+    }
 
 
 @router.post("/samsung")

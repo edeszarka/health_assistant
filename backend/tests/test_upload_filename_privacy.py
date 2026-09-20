@@ -30,6 +30,7 @@ def _fake_report() -> SimpleNamespace:
             )
         ],
         patient=SimpleNamespace(sample_date=None),
+        parse_errors=[],
     )
 
 

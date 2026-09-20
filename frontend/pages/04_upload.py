@@ -47,6 +47,8 @@ with tab_pdf:
                     f"extracted {result.get('extracted', 0)}, "
                     f"stored {result.get('stored', 0)} results."
                 )
+                for warning in result.get("warnings") or []:
+                    st.warning(warning)
             except httpx.HTTPStatusError as e:
                 try:
                     detail = e.response.json().get("detail", e.response.text)
