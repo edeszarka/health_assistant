@@ -247,9 +247,11 @@ numbered/LOINC tabular format and the legacy/Corden format — including colon-l
 rows, comma/dot decimals, `magas`/`alacsony`/`*` flags, and open-ended ranges.
 Dictionary-based normalization covers known Hungarian/Latin names, but
 provider-specific abbreviations and further layout variants remain a known failure
-mode; rows that cannot be parsed (qualitative or inequality-bounded results) are
-skipped and reported via the upload `warnings` list. Production would require a
-human review step for parsed values.
+mode. Rows that cannot be parsed (qualitative or inequality-bounded results, e.g.
+eGFR reported as ">90") are silently skipped — today only document-level issues
+(missing or malformed sample date) are reported via the upload `warnings` list, not
+individual skipped rows. Production would require a human review step for parsed
+values.
 
 **No human-in-the-loop for parsed data**: Automated parsing of medical values without
 verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
