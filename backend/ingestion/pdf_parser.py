@@ -140,6 +140,12 @@ class PDFParser:
 
     _SEPARATOR_RE = re.compile(r"^[\s\-]{10,}$")
 
+    # Colon-less tabular rows (both real-world formats).
+    # Strip a leading row number and an optional LOINC-style code.
+    _ROW_PREFIX_RE = re.compile(r"^\d{1,4}\s+(?:([\dA-Za-z]{2,8}-\d{1,3})\s+)?")
+    # First whitespace-delimited token starting with a bare digit.
+    _VALUE_START_RE = re.compile(r"(?<!\S)(-?\d[\d,\.]*)(?=\s)")
+
     # Group panel header: e.g. "28014 Teljes vérkép Valid"
     _GROUP_HEADER_RE = re.compile(
         r"^\s*\d{4,6}\s+"
@@ -155,8 +161,8 @@ class PDFParser:
     _BIRTH_RE = re.compile(r"Született[:\s]+(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
     _SEX_RE = re.compile(r"Nem\s*[_\s]*:\s*(Férfi|Nő|férfi|nő)", re.IGNORECASE)
     _SAMPLE_DATE_RE = re.compile(
-        r"Mintavétel ideje\s*[_\s]*:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})",
-        re.IGNORECASE,
+        r"Mintavétel[^:\n]{0,25}:\s*(\d{4})[.\-](\d{2})[.\-](\d{2})\.?\s+"
+        r"(\d{2}):(\d{2})(?::(\d{2}))?"
     )
     _DOCTOR_RE = re.compile(
         r"Beküldő\s*:\s*\(\d+\)\s*(.+)$", re.IGNORECASE | re.MULTILINE
@@ -186,6 +192,11 @@ class PDFParser:
         "tart.cím",
         "született",
         "megjegyz",
+        # Page-footer / continuation-header stamp words (EESZT + legacy).
+        "generált",
+        "aláírás",
+        "oldal",
+        "validálta",
     }
 
     def __init__(self) -> None:
@@ -287,11 +298,15 @@ class PDFParser:
         m = self._SAMPLE_DATE_RE.search(text)
         if m:
             try:
-                info.sample_date = datetime.strptime(
-                    m.group(1).strip(), "%Y-%m-%d %H:%M"
-                )
+                year, month, day, hour, minute = (int(m.group(i)) for i in range(1, 6))
+                second = int(m.group(6)) if m.group(6) is not None else 0
+                info.sample_date = datetime(year, month, day, hour, minute, second)
             except ValueError:
-                errors.append(f"Bad sample date: {m.group(1)}")
+                errors.append(f"Bad sample date: {m.group(0)}")
+        else:
+            errors.append(
+                "Sample date not found — no 'Mintavétel' line matched"
+            )
 
         m = self._DOCTOR_RE.search(text)
         if m:
@@ -311,6 +326,12 @@ class PDFParser:
         results: list[LabValue] = []
         current_group: Optional[str] = None
 
+        # Nothing before the column header row is a result. Both real formats
+        # interleave a two-column patient/header layout onto shared lines, so
+        # skip everything until the header row is seen. It stays True once set
+        # (the header legitimately repeats on every page).
+        table_started = False
+
         for line in text.splitlines():
             stripped = line.strip()
 
@@ -318,23 +339,92 @@ class PDFParser:
             if not stripped or self._SEPARATOR_RE.match(stripped):
                 continue
 
+            if not table_started:
+                lowered = stripped.lower()
+                if "eredmény" in lowered and "referencia" in lowered:
+                    table_started = True
+                continue
+
             # Skip header/metadata lines
             if any(kw in stripped.lower() for kw in self._SKIP_KEYWORDS):
                 continue
 
-            # Detect panel group header (has WHO code, no colon, ends with Valid or is just a name)
-            if ":" not in stripped:
-                gm = self._GROUP_HEADER_RE.match(line)
-                if gm:
-                    current_group = gm.group(1).strip()
+            # Colon-based result row
+            if ":" in stripped:
+                lv = self._parse_line(line, current_group, errors)
+                if lv is not None:
+                    results.append(lv)
                 continue
 
-            # Parse as result line
-            lv = self._parse_line(line, current_group, errors)
+            # Colon-less line: try a tabular row first, then a group header.
+            lv = self._parse_tabular_line(stripped, current_group, errors)
             if lv is not None:
                 results.append(lv)
+                continue
+
+            gm = self._GROUP_HEADER_RE.match(line)
+            if gm:
+                current_group = gm.group(1).strip()
 
         return results
+
+    def _parse_tabular_line(
+        self,
+        line: str,
+        group: Optional[str],
+        errors: list[str],
+    ) -> Optional[LabValue]:
+        """Parse a colon-less, column-aligned result row (both real formats).
+
+        Locates the value by finding the first whitespace-delimited token that
+        starts with a bare digit — test names in both real formats never contain
+        digits, so this boundary reliably separates name from value. A leading
+        row number and an optional LOINC-style code (digits/letters + hyphen +
+        digits) are stripped first if present; both are optional since format B
+        has neither.
+
+        If a "<" or ">" character appears anywhere between the name and the
+        matched value, the row is an inequality-bounded result (e.g. eGFR
+        reported as ">90") rather than a clean scalar — skip it rather than
+        fabricate a misleading number; do not attempt to capture eGFR-style
+        inequality values in this task.
+        """
+        remainder = line
+        prefix_m = self._ROW_PREFIX_RE.match(line)
+        if prefix_m:
+            remainder = line[prefix_m.end() :]
+
+        value_m = self._VALUE_START_RE.search(remainder)
+        if value_m is None:
+            return None
+
+        name = remainder[: value_m.start()]
+        if "<" in name or ">" in name:
+            return None
+
+        name = name.strip()
+        if not name or len(name) < 2:
+            return None
+
+        parsed = self._parse_value_section(remainder[value_m.start() :], errors)
+        if parsed is None:
+            return None
+
+        value, unit, ref_low, ref_high, ref_text, is_flagged, flag_dir = parsed
+
+        return LabValue(
+            raw_name=name,
+            normalized_name=self.normalizer.normalize(name),
+            value=value,
+            unit=unit,
+            ref_range_low=ref_low,
+            ref_range_high=ref_high,
+            ref_range_text=ref_text,
+            is_flagged=is_flagged,
+            flag_direction=flag_dir,
+            who_code=None,
+            group=group,
+        )
 
     def _parse_line(
         self,
@@ -402,6 +492,9 @@ class PDFParser:
           "5 mm/h 3 - 15 Valid"          → integer value
           "79 Valid"                     → value only, no unit/range
           "< 0,10"                       → upper-only range, no unit
+          "5.4 mmol/l magas 3.9 - 5.2 mmol/l VALIDÁLT (1)"
+                                         → "magas" flag, unit repeated after range
+          "1,25 mmol/l * 1,30 - Valid"   → "*" symbol, open lower bound "1,30 -"
 
         Returns:
             (value, unit, ref_low, ref_high, ref_text, is_flagged, flag_direction)
@@ -410,7 +503,10 @@ class PDFParser:
         if not section:
             return None
 
-        # Remove trailing "Valid" / "Invalid"
+        # Remove trailing "Valid" / "Invalid" and EESZT "VALIDÁLT (n)" status
+        section = re.sub(
+            r"\s*VALIDÁLT\s*\(\d+\)\s*$", "", section, flags=re.IGNORECASE
+        ).strip()
         section = re.sub(
             r"\s*\b(Valid|Invalid)\b\s*$", "", section, flags=re.IGNORECASE
         ).strip()
@@ -419,17 +515,38 @@ class PDFParser:
         if re.match(r"^(Neg|Pos|negatív|pozitív|Nincs)\b", section, re.IGNORECASE):
             return None
 
-        # ---- Detect flag (+ or -) ----------------------------------------
+        # ---- Detect flag words/symbols -----------------------------------
         is_flagged = False
         flag_dir: Optional[str] = None
+
+        # Inline Hungarian flag words used by the EESZT format.
+        for word, direction in (("magas", "high"), ("alacsony", "low")):
+            word_m = re.search(rf"\b{word}\b", section, re.IGNORECASE)
+            if word_m and not is_flagged:
+                is_flagged = True
+                flag_dir = direction
+                section = (
+                    section[: word_m.start()] + " " + section[word_m.end() :]
+                ).strip()
+
+        # Bare "*" is an inline flag symbol with unknown direction: strip it but
+        # do NOT set is_flagged — the numeric fallback below must set both
+        # is_flagged and flag_direction together.
+        if "*" in section:
+            section = re.sub(r"\s*\*\s*", " ", section).strip()
 
         # Flag can appear at end OR just after the numeric value (before unit/range)
         # Strip trailing flag first
         trailing_flag = re.search(r"\s+([+\-])\s*$", section)
         if trailing_flag:
-            flag_dir = "high" if trailing_flag.group(1) == "+" else "low"
-            is_flagged = True
-            section = section[: trailing_flag.start()].strip()
+            # A trailing "-" directly after a number is an open-ended reference
+            # bound ("1,30 -"), not a low flag; leave it for range parsing.
+            preceding = section[: trailing_flag.start()].rstrip()
+            is_open_bound = trailing_flag.group(1) == "-" and preceding[-1:].isdigit()
+            if not is_open_bound:
+                flag_dir = "high" if trailing_flag.group(1) == "+" else "low"
+                is_flagged = True
+                section = section[: trailing_flag.start()].strip()
 
         # Flag "+" between value and reference range (e.g. "6,74 mmol/L + 2,50 - 6,60")
         # Only match "+" — never "-" because "-" is the range separator (e.g. "4,00 - 10,00")
@@ -459,8 +576,12 @@ class PDFParser:
         ref_low: Optional[float] = None
         ref_high: Optional[float] = None
 
+        # Range matching is unanchored because format A repeats the unit after
+        # the range ("4.00 - 10.00 G/l"). Everything before the match is the
+        # candidate unit text; everything from the match on is discarded.
+
         # "low - high" (handles negative lower bound with leading "-")
-        rng_m = re.search(r"(-?[\d,\.]+)\s*-\s*([\d,\.]+)\s*$", rest)
+        rng_m = re.search(r"(-?[\d,\.]+)\s*-\s*([\d,\.]+)", rest)
         if rng_m:
             ref_text = rng_m.group(0).strip()
             try:
@@ -471,7 +592,7 @@ class PDFParser:
             rest = rest[: rng_m.start()].strip()
 
         # "< value"  (upper-only)
-        lt_m = re.search(r"<\s*([\d,\.]+)\s*$", rest)
+        lt_m = re.search(r"<\s*([\d,\.]+)", rest)
         if lt_m and not rng_m:
             ref_text = lt_m.group(0).strip()
             try:
@@ -481,7 +602,7 @@ class PDFParser:
             rest = rest[: lt_m.start()].strip()
 
         # "> value" (lower-only)
-        gt_m = re.search(r">\s*([\d,\.]+)\s*$", rest)
+        gt_m = re.search(r">\s*([\d,\.]+)", rest)
         if gt_m and not rng_m and not lt_m:
             ref_text = gt_m.group(0).strip()
             try:
@@ -489,6 +610,17 @@ class PDFParser:
             except ValueError:
                 pass
             rest = rest[: gt_m.start()].strip()
+
+        # Lone trailing number + dash ("1,30 -") = open lower bound, no ">".
+        # Tried only when none of the above matched.
+        open_m = re.search(r"(-?[\d,\.]+)\s*-\s*$", rest)
+        if open_m and not rng_m and not lt_m and not gt_m:
+            ref_text = open_m.group(0).strip()
+            try:
+                ref_low = float(open_m.group(1).replace(",", "."))
+            except ValueError:
+                pass
+            rest = rest[: open_m.start()].strip()
 
         # ---- Auto-flag if outside range (backup for PDFs without + marker) -
         if not is_flagged:
