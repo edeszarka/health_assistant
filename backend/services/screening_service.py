@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,22 +110,6 @@ SCREENING_RULES: List[ScreeningRule] = [
 
 class ScreeningService:
     """Generates personalised preventive screening recommendations."""
-
-    def __init__(self) -> None:
-        self._guidelines: list[dict] = []
-        self._load_guidelines()
-
-    def _load_guidelines(self) -> None:
-        """Load USPSTF guidelines JSON at startup."""
-        guideline_path = (
-            Path(__file__).parents[2] / "data_sample" / "uspstf_guidelines.json"
-        )
-        try:
-            with open(guideline_path, "r", encoding="utf-8") as f:
-                self._guidelines = json.load(f)
-        except Exception as exc:
-            logger.error(f"Failed to load screening guidelines: {exc}")
-            self._guidelines = []
 
     async def get_recommendations(
         self,

@@ -59,5 +59,4 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
         bp_summary=bp,
         risk_scores=risk_scores,
         active_flags=active_flags,
-        recommendations_count=0,  # filled by frontend from /recommendations
     )
