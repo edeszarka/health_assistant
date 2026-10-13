@@ -1,0 +1,7 @@
+# Streamlit reads this from the working directory it is started in
+# (/app in the frontend image, frontend/ when run locally).
+
+[browser]
+# Streamlit sends usage statistics to Streamlit by default. This app keeps
+# all data on the host, so telemetry is disabled.
+gatherUsageStats = false

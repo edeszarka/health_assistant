@@ -123,7 +123,9 @@ Reads lab results and the five latest `risk_scores` rows
 | Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:236`, `backend/services/rag_service.py:34` |
 | MedlinePlus Web Service | backend | A topic search term | `backend/config.py:14`, `backend/services/medlineplus_service.py:100-104` |
 | MedlinePlus Connect | backend | An ICD-10 code | `backend/config.py:15`, `backend/services/medlineplus_service.py:136-144` |
-| Streamlit usage statistics | frontend | Streamlit's own usage telemetry; not disabled (no `.streamlit/config.toml`, and Streamlit's `browser.gatherUsageStats` defaults to `true`) | `frontend/` |
+
+Streamlit usage statistics from the frontend are disabled
+(`frontend/.streamlit/config.toml:7`).
 
 MedlinePlus calls are rate-limited and cached for `medlineplus_cache_ttl_days`
 (`backend/services/medlineplus_service.py:22-66,221-275`).
@@ -176,8 +178,6 @@ before it is made (see [AGENTS.md](AGENTS.md)).
      (`backend/services/screening_service.py:44,196`). Which names are sent
      depends on the user's age, sex, family history and flagged labs, so the
      set of queries indirectly reflects that profile.
-   Known exception outside the backend: Streamlit usage statistics (see
-   [External calls](#external-calls)).
 
 5. **The user's own records are never presented as an external source.**
    The prompt labels retrieved context as "semantic search over stored health
@@ -186,6 +186,11 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    (`backend/routers/chat.py:760`). Known exception: when retrieval fails, the
    fallback text placed in the context reads "Medical knowledge retrieval
    unavailable" (`backend/routers/chat.py:740`).
+
+6. **No usage telemetry leaves the host.**
+   Streamlit's `browser.gatherUsageStats` defaults to `true`; it is set to
+   `false` in `frontend/.streamlit/config.toml:7`, which the frontend image
+   copies into its working directory (`frontend/Dockerfile:3,13,19`).
 
 ### (b) Targets — NOT yet implemented
 
@@ -200,5 +205,3 @@ before it is made (see [AGENTS.md](AGENTS.md)).
 - **Target:** risk scores that cannot be computed correctly are not shown.
   Today the female Framingham table is a copy of the male table
   (`backend/services/risk_engine.py:107-114`) and the score is shown anyway.
-- **Target:** no usage telemetry leaves the host. Today Streamlit usage
-  statistics are enabled by default.
