@@ -7,8 +7,8 @@ BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 st.set_page_config(page_title="Upload", page_icon="📂", layout="wide")
 st.title("📂 Upload Medical Data")
 
-tab_pdf, tab_samsung, tab_zepp = st.tabs(
-    ["🗒️ Lab PDF", "📱 Samsung Health", "⌚ Zepp Life"]
+tab_pdf, tab_samsung = st.tabs(
+    ["🗒️ Lab PDF", "📱 Samsung Health"]
 )
 
 
@@ -82,64 +82,6 @@ with tab_samsung:
                 resp = httpx.post(
                     f"{BACKEND}/upload/samsung",
                     files=httpx_files,
-                    timeout=1200.0,
-                )
-                resp.raise_for_status()
-                result = resp.json()
-                st.success(
-                    f"✅ Processed **{result.get('filename')}**: "
-                    f"{result.get('metrics_extracted', 0)} days extracted, "
-                    f"{result.get('stored', 0)} metrics stored."
-                )
-            except httpx.HTTPStatusError as e:
-                try:
-                    detail = e.response.json().get("detail", e.response.text)
-                except Exception:
-                    detail = e.response.text
-                st.error(f"Upload failed: {detail}")
-            except Exception as e:
-                st.error(f"Upload failed: {e}")
-
-# ── Zepp Life tab ─────────────────────────────────────────────────────────────
-with tab_zepp:
-    st.subheader("Upload Zepp Life Export")
-    st.info(
-        "Export from Zepp Life app → Profile → Privacy and Account → "
-        "Download Personal Data. The export ZIP is password protected — "
-        "the password is shown in the confirmation email from Zepp."
-    )
-    zepp_files = st.file_uploader(
-        "Choose the Zepp Life ZIP file",
-        type=["zip", "csv"],
-        accept_multiple_files=True,
-        key="zepp_upload",
-    )
-    zepp_password = st.text_input(
-        "ZIP Password (from Zepp confirmation email)",
-        value="",
-        type="password",
-        placeholder="Enter the password from your Zepp export email",
-    )
-
-    if zepp_files and st.button("Process Zepp Data", key="process_zepp"):
-        if not zepp_password:
-            st.warning(
-                "⚠️ No password entered. If the ZIP is password-protected the upload will fail."
-            )
-
-        with st.spinner("Parsing Zepp Life data…"):
-            try:
-                httpx_files = [
-                    ("files", (f.name, f.getvalue(), _mime(f.name))) for f in zepp_files
-                ]
-                data = {}
-                if zepp_password:
-                    data["password"] = zepp_password
-
-                resp = httpx.post(
-                    f"{BACKEND}/upload/zepp",
-                    files=httpx_files,
-                    data=data,
                     timeout=1200.0,
                 )
                 resp.raise_for_status()

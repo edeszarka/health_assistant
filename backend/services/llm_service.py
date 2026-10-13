@@ -167,7 +167,7 @@ class LLMService:
             risk_scores: Dict with framingham_risk_percent and findrisc_score.
             query_type: "general" or "risk_analysis" (enables thinking mode).
             user_language: "English" or "Hungarian" — detected from message.
-            health_metrics_summary: Steps, weight, and calories from Samsung/Zepp.
+            health_metrics_summary: Steps, weight, and calories from stored wearable metrics.
             flagged_values: Lab results with trends and flag status.
             bp_summary: Blood pressure readings.
             family_history_summary: Family medical history entries.
