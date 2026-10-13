@@ -30,7 +30,7 @@ are described in [ARCHITECTURE.md](ARCHITECTURE.md).
 1. Briefly present the plan before writing code.
 2. Modify only the files named in the task, unless test coverage justifies adding a test file.
 3. Invariants: if a change could violate an Invariant in ARCHITECTURE.md, stop and ask before editing.
-4. Docs sync: if your change makes README.md, ARCHITECTURE.md or GEMINI.md inaccurate, update the affected lines if they are in scope; otherwise list them in the final summary.
+4. Docs sync: if your change makes README.md or ARCHITECTURE.md inaccurate, update the affected lines if they are in scope; otherwise list them in the final summary.
 5. At the end, give a summary: which files, why, with what risk, and which questions remain open.
 
 ## Output protocol (lean)
