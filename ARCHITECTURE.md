@@ -43,19 +43,19 @@ Ollama over HTTP (`backend/services/llm_service.py:172`,
 ### Lab PDF upload — `POST /upload/pdf`
 1. The PDF is saved to `settings.upload_dir` under a generated
    `timestamp_uuid` name; the original filename is not persisted
-   (`backend/routers/upload.py:43-53`).
+   (`backend/routers/upload.py:45-55`).
 2. `PDFParser` extracts values with pdfplumber and regular expressions; lab
    names are normalised by `LabNormalizer` inside the parser
    (`backend/ingestion/pdf_parser.py:203,417,464`). No LLM is involved.
 3. Each value is stored as a `LabResult` row and embedded as `lab_result`
-   (`backend/routers/upload.py:77-96`). Parse warnings are returned to the
-   caller (`backend/routers/upload.py:108`).
+   (`backend/routers/upload.py:79-98`). Parse warnings are returned to the
+   caller (`backend/routers/upload.py:116`).
 
 ### Wearable upload — `POST /upload/samsung`
 Daily summaries are upserted into `samsung_health_metrics`, keyed on
-`(metric_type, recorded_at)` (`backend/routers/upload.py:112-197`). A Samsung
+`(metric_type, recorded_at)` (`backend/routers/upload.py:120-208`). A Samsung
 upload also stores one `samsung_summary` embedding
-(`backend/routers/upload.py:197`). Rows written by the former Zepp Life
+(`backend/routers/upload.py:208`). Rows written by the former Zepp Life
 import (metric types such as `resting_hr`, `sleep_total_min`, `avg_spo2`,
 `avg_stress`) remain in the table; the import itself has been removed.
 
@@ -111,8 +111,8 @@ Reads lab results and the five latest `risk_scores` rows
   but `backend/database/migrations/versions/` holds no migrations.
 - **Vector store**: `embeddings.embedding` is `Vector(768)`
   (`backend/models/db_models.py:119`). Only three source types are written:
-  `lab_result` (`backend/routers/upload.py:96`), `samsung_summary`
-  (`backend/routers/upload.py:197`), `family_history`
+  `lab_result` (`backend/routers/upload.py:98`), `samsung_summary`
+  (`backend/routers/upload.py:208`), `family_history`
   (`backend/routers/family_history.py:64`). No medical literature or guideline
   text is embedded.
 - **Files**: uploaded PDFs are kept on disk in `settings.upload_dir`

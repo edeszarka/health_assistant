@@ -1,7 +1,7 @@
 """Upload router: lab PDF and Samsung Health ZIP ingestion."""
 from __future__ import annotations
 
-import os
+import logging
 import uuid
 from pathlib import Path
 from typing import List
@@ -18,6 +18,8 @@ from ingestion.samsung_parser import SamsungHealthParser
 from models.db_models import LabResult, SamsungHealthMetric
 from services.rag_service import rag_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 pdf_parser = PDFParser()
 samsung_parser = SamsungHealthParser()
@@ -28,7 +30,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Upload a lab result PDF, extract values via LLM, persist to DB and embed in pgvector.
+    """Upload a lab result PDF, extract values with the PDF parser, persist to DB and embed in pgvector.
 
     Args:
         file: The uploaded PDF file.
@@ -95,12 +97,18 @@ async def upload_pdf(
             )
             await rag_service.store_embedding("lab_result", row.id, embed_text, db)
             stored += 1
-        except Exception as e:
-            print(f"Failed to store lab result {lab}: {e}")
+        except Exception as exc:
+            # Log the test name and error type only: the exception text can
+            # include the lab value, and logs must not carry health data.
+            logger.warning(
+                "Failed to store lab result %s: %s", lab.normalized_name, type(exc).__name__
+            )
             continue
 
     await db.commit()
-    print(f"[UPLOAD] Extracted {len(report.results)} results, stored {stored} results for {upload_id}")
+    logger.info(
+        "Extracted %d results, stored %d results for %s", len(report.results), stored, upload_id
+    )
     return {
         "filename": original_filename,
         "extracted": len(report.results),
@@ -187,7 +195,10 @@ async def upload_samsung(
                     )
                     await db.execute(stmt)
                     stored += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Skipping Samsung metrics for %s: %s", ds.get("date"), type(exc).__name__
+            )
             continue
 
     await db.commit()
