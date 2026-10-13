@@ -75,7 +75,7 @@ embedding, so chat retrieval no longer returns it
    (`backend/routers/chat.py:693,696`).
 2. SQL context builders run only for the detected intents: date-specific,
    wearable metrics, lab trends, blood pressure, family history, risk scores
-   (`backend/routers/chat.py:705-734`).
+   (`backend/routers/chat.py:706-735`).
 3. Risk scores: baseline scores are computed and persisted by
    `compute_baseline_scores`; hypothetical ("what if") scores are computed in
    memory (`backend/routers/chat.py:535,542-664`).
@@ -83,9 +83,9 @@ embedding, so chat retrieval no longer returns it
    the similarity threshold are retrieved, with no source-type filter
    (`backend/services/rag_service.py:167`, threshold `backend/config.py:17`).
 5. Everything is formatted into the system prompt and sent to Ollama
-   `/api/chat` (`backend/routers/chat.py:744`,
+   `/api/chat` (`backend/routers/chat.py:747`,
    `backend/services/llm_service.py:172`). The response never cites sources
-   (`backend/routers/chat.py:759`).
+   (`backend/routers/chat.py:768`).
 
 ### Recommendations — `GET /recommendations/`
 Baseline risk scores are computed and persisted, then hard-coded
@@ -162,16 +162,19 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    (`backend/routers/chat.py:489,508,518`) and returns its results in memory
    (`backend/routers/chat.py:542-664`); only baseline scores are persisted, via
    `compute_baseline_scores` (`backend/routers/chat.py:535`,
-   `backend/services/risk_score_service.py:306-336`). No test asserts this yet.
+   `backend/services/risk_score_service.py:306-336`). Locked by
+   `test_hypothetical_scores_are_never_persisted`
+   (`backend/tests/test_chat_hypothetical.py`).
 
 3. **Retrieved data is wrapped in tagged blocks and the prompt instructs the
    model never to treat it as instructions.**
    Tags: `backend/services/llm_service.py:32-58`; rule:
    `backend/services/llm_service.py:61`; template tests:
    `backend/tests/test_llm_service.py`. Whether the model obeys cannot be
-   enforced in code. Known exception: `conversation_history` is forwarded to
-   the model verbatim from the client, roles unchecked
-   (`backend/models/api_models.py:111`, `backend/services/llm_service.py:157`).
+   enforced in code. Client-supplied conversation history accepts only `user`
+   and `assistant` turns, so no client can inject a system message
+   (`backend/models/api_models.py:107-122`; tests:
+   `backend/tests/test_chat_hardening.py`).
 
 4. **The backend's only external call is MedlinePlus; it receives condition
    or topic terms only:**
@@ -186,9 +189,9 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    The prompt labels retrieved context as "semantic search over stored health
    records" from "the user's own records"
    (`backend/services/llm_service.py:55,61`); chat responses cite no sources
-   (`backend/routers/chat.py:759`). Known exception: when retrieval fails, the
-   fallback text placed in the context reads "Medical knowledge retrieval
-   unavailable" (`backend/routers/chat.py:740`).
+   (`backend/routers/chat.py:768`). When retrieval fails, the context only
+   says "(Context retrieval unavailable.)" and the error goes to the log
+   (`backend/routers/chat.py:740-743`).
 
 6. **No usage telemetry leaves the host.**
    Streamlit's `browser.gatherUsageStats` defaults to `true`; it is set to
@@ -207,7 +210,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
   of answering. Today only default placeholder strings are passed
   (`backend/services/llm_service.py:145-146`); nothing prevents an answer.
 - **Target:** the LLM runs only when needed. Today every chat message calls the
-  LLM (`backend/routers/chat.py:744`).
+  LLM (`backend/routers/chat.py:747`).
 - **Target:** MedlinePlus content is used in chat answers. Today MedlinePlus
   results are only displayed on the recommendations page and never reach the
   prompt.
