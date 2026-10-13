@@ -1,28 +1,37 @@
 # AGENTS.md — health_assistant
 
-## Git fegyelem (KÖTELEZŐ, minden feladatnál)
-- SOHA ne commitolj közvetlenül a `selective_sql_injection` vagy `main`/`master` branch-re.
-- Feladat elején mindig: `git status` + `git branch --show-current` — ha a working tree nem tiszta, állj meg és kérdezz.
-- Minden önálló javításhoz külön branch a jelenlegi branch-ből ágaztatva:
-  `git checkout -b fix/<rövid-leíró-név> selective_sql_injection`
-- Ne push-olj (a repo csak lokális), ne merge-elj automatikusan a bázis branch-be, ne rebase-elj meglévő branch-et.
-- Kis, atomi commitok, Conventional Commits formátumban, ANGOLUL:
+How an agent works on this repository. The system itself and its invariants
+are described in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Git discipline (MANDATORY, every task)
+- The base branch is `main`. NEVER commit directly to `main`.
+- At the start of every task: `git status` + `git branch --show-current`. If the working tree is not clean, stop and ask.
+- Every self-contained change gets its own branch created from `main`, named `<type>/<short-descriptive-name>`:
+  `git checkout -b fix/<short-descriptive-name> main`
+- The repository is public; merges happen via pull requests by the owner. Do not push, do not merge automatically, do not rebase existing branches.
+- Small, atomic commits in Conventional Commits format, in ENGLISH:
   `fix(rag): filter similarity_search by source_type`
-- Minden commit előtt: a kód fusson (`pytest tests/ -v` zöld), és a diff kizárólag a feladat hatókörébe tartozó fájlokat érintse.
-- A feladat végén: `git log --oneline <base>..HEAD` és `git diff --stat <base>..HEAD` kiírása — ne csinálj mást a branch-csel (nincs merge, nincs push).
+- Before every commit, from `backend/`:
+  - `pytest tests/ -v` is green (see Testing Protocols);
+  - `bandit -r . -ll` passes (blocking CI step);
+  - ruff, vulture and mypy are advisory in CI: add no new findings in the files you touch, and report the rest;
+  - the diff touches only files within the task's scope.
+- At the end of the task: print `git log --oneline <base>..HEAD` and `git diff --stat <base>..HEAD`. Do nothing else with the branch (no merge, no push).
 
-## Clean code szabályok
-- Kövesd a meglévő stílust: Google-style docstring-ek (lásd `risk_engine.py`, `rag_service.py`), type hint-ek mindenhol, `from __future__ import annotations`.
-- Egy függvény egy felelősség (SRP) — ha egy fix miatt egy függvény 40+ sorosra nőne, bontsd szét.
-- Tilos a néma `except Exception: pass` — mindig `logger.warning`/`logger.error` a meglévő minta szerint.
-- Ne legyen mágikus szám/string dokumentáció nélkül; konfigurálható értékeket a `config.py`/`Settings`-be vagy modul szintű konstansba tegyél, kommenttel indokolva.
-- Ne törölj és ne módosíts olyan kódot, ami nem kapcsolódik a kapott feladathoz (scope discipline). Ha refaktorálási lehetőséget látsz máshol, csak jelezd a végső összefoglalóban, ne írd át.
-- Minden módosított/új logikához tartozzon vagy frissüljön unit teszt a `backend/tests/`-ben, a meglévő pytest+pytest-asyncio mintát követve.
+## Clean code rules
+- Follow the existing style: Google-style docstrings (see `risk_engine.py`, `rag_service.py`), type hints everywhere, `from __future__ import annotations`.
+- One function, one responsibility (SRP). If a fix would grow a function past 40 lines, split it.
+- In new or modified code, no silent `except Exception: pass` and no silent `continue`; always log via `logger.warning`/`logger.error` following the existing pattern. Existing violations outside the task are reported, not fixed.
+- No magic numbers or strings without documentation; put configurable values in `config.py`/`Settings` or in a module-level constant, with a comment explaining why.
+- Do not delete or modify code unrelated to the task (scope discipline). If you see a refactoring opportunity elsewhere, only mention it in the final summary; do not rewrite it.
+- Every new or modified piece of logic gets a new or updated unit test in `backend/tests/`, following the existing pytest + pytest-asyncio pattern.
 
-## Munkafolyamat
-1. Ismertesd röviden a tervet, mielőtt kódot írsz.
-2. Csak a megjelölt fájlokat módosítsd, kivéve ha a teszt-lefedettség indokolja egy teszt-fájl hozzáadását.
-3. A végén adj összefoglalót: mely fájlok, miért, milyen kockázattal, mi maradt nyitott kérdés.
+## Workflow
+1. Briefly present the plan before writing code.
+2. Modify only the files named in the task, unless test coverage justifies adding a test file.
+3. Invariants: if a change could violate an Invariant in ARCHITECTURE.md, stop and ask before editing.
+4. Docs sync: if your change makes README.md, ARCHITECTURE.md or GEMINI.md inaccurate, update the affected lines if they are in scope; otherwise list them in the final summary.
+5. At the end, give a summary: which files, why, with what risk, and which questions remain open.
 
 ## Output protocol (lean)
 
@@ -42,6 +51,8 @@ Every task response must include these 5 items, but keep them compact:
 5. **git log --oneline <base>..<branch>** — one line per commit.
 
 ## Tiering
+The prompt declares the tier. If it does not, treat the task as Logic. The
+agent never downgrades a task's tier.
 - **Mechanical changes** (deletion of confirmed-dead code, import cleanup,
   dependency bumps, config-only additions with no behavior change): items
   1–5 above, minimal prose, no extra discussion needed.
