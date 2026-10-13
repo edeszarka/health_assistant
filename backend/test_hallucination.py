@@ -35,7 +35,6 @@ async def main():
         conversation_history=[],
         context="",
         user_profile=None,
-        query_type="general",
         health_metrics_summary=metrics_summary,
         flagged_values="No flagged lab values on record.",
         bp_summary="No blood pressure readings in last 30 days.",

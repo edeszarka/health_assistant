@@ -747,7 +747,6 @@ async def chat(
             context=rag_context,
             user_profile=profile,
             risk_scores=risk_scores,
-            query_type=getattr(request, "query_type", "general"),
             user_language=user_language,
             health_metrics_summary=metrics_summary,
             flagged_values=lab_summary,
