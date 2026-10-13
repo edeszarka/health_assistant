@@ -241,7 +241,11 @@ class MedlinePlusService:
         self, cache_key: str, term: str, data: dict, db: AsyncSession
     ) -> None:
         """Upsert a cache entry with configured TTL.
-        
+
+        The write runs in a SAVEPOINT on the caller's session, so a failed
+        cache write rolls back only the cache row and never the caller's
+        pending changes (e.g. a new family history entry).
+
         Args:
             cache_key: Unique identifier for the search.
             term: The original search term.
@@ -250,26 +254,27 @@ class MedlinePlusService:
         """
         try:
             expires = datetime.now(timezone.utc) + timedelta(days=self._ttl_days)
-            stmt = select(MedlinePlusCache).where(
-                MedlinePlusCache.cache_key == cache_key
-            )
-            result = await db.execute(stmt)
-            row = result.scalar_one_or_none()
-            if row:
-                row.response_json = json.dumps(data)
-                row.expires_at = expires
-            else:
-                row = MedlinePlusCache(
-                    cache_key=cache_key,
-                    query_term=term,
-                    response_json=json.dumps(data),
-                    expires_at=expires,
+            async with db.begin_nested():
+                stmt = select(MedlinePlusCache).where(
+                    MedlinePlusCache.cache_key == cache_key
                 )
-                db.add(row)
-            await db.commit()
+                result = await db.execute(stmt)
+                row = result.scalar_one_or_none()
+                if row:
+                    row.response_json = json.dumps(data)
+                    row.expires_at = expires
+                else:
+                    row = MedlinePlusCache(
+                        cache_key=cache_key,
+                        query_term=term,
+                        response_json=json.dumps(data),
+                        expires_at=expires,
+                    )
+                    db.add(row)
         except Exception as exc:
             logger.warning(f"MedlinePlus cache write failed: {exc}")
-            await db.rollback()
+            return
+        await db.commit()
 
 
 medlineplus_service = MedlinePlusService()

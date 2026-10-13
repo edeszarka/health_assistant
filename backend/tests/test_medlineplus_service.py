@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,10 +27,27 @@ def service():
     return MedlinePlusService()
 
 
+class _Savepoint:
+    """Async context manager standing in for AsyncSession.begin_nested()."""
+
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
+def _db_with_savepoint() -> AsyncMock:
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.begin_nested = MagicMock(return_value=_Savepoint())
+    return db
+
+
 @pytest.mark.asyncio
 async def test_cache_miss_then_hit(service):
     """First call fetches from API and caches; second call uses cache."""
-    mock_db = AsyncMock()
+    mock_db = _db_with_savepoint()
 
     # Simulate cache miss (no row found)
     empty_result = MagicMock()
@@ -73,3 +91,18 @@ async def test_cache_hit_returns_without_http(service):
         mock_cls.assert_not_called()  # No HTTP call made
 
     assert result["title"] == "Cached Title"
+
+
+@pytest.mark.asyncio
+async def test_failed_cache_write_does_not_roll_back_caller(service, caplog):
+    """A cache write failure must not discard the caller's pending changes."""
+    db = _db_with_savepoint()
+    db.execute.side_effect = RuntimeError("cache table locked")
+
+    with caplog.at_level(logging.WARNING, logger="services.medlineplus_service"):
+        await service._set_cache("icd10:E11", "E11", {"title": "x"}, db)
+
+    db.begin_nested.assert_called_once()
+    db.rollback.assert_not_awaited()
+    db.commit.assert_not_awaited()
+    assert "MedlinePlus cache write failed" in caplog.text
