@@ -29,7 +29,7 @@
 │                       └────────────────┘                           │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
-                                ▼ (no personal data sent)
+                                ▼ (lookup terms only, no records)
                     ┌───────────────────────┐
                     │   MedlinePlus (NIH)   │
                     │   Public API          │
@@ -49,7 +49,7 @@
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
 - 🎯 **Risk Scores** – Framingham 10-year CV risk, FINDRISC diabetes risk
-- 🔒 **Privacy-first** – All data stays local; only MedlinePlus (NIH public API) is called externally
+- 🔒 **Privacy-first** – Your health records stay local; only MedlinePlus (NIH public API) is called externally, with lookup terms only (see [Data Privacy](#data-privacy))
 
 ---
 
@@ -133,7 +133,7 @@ API docs available at: **http://localhost:8000/docs**
 | Blood pressure | ✅ Stored only in your local PostgreSQL |
 | Family history | ✅ Stored only in your local PostgreSQL |
 | AI inference | ✅ Runs entirely on Ollama (local) |
-| MedlinePlus queries | ⚠️ Condition names only, no personal data |
+| MedlinePlus queries | ⚠️ Lookup terms only: screening condition names, ICD-10 codes, and family-history conditions exactly as you type them. No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
 | `/data/` folder | 🚫 In `.gitignore` — never committed |
 | `.env` file | 🚫 In `.gitignore` — never committed |
 
@@ -240,7 +240,7 @@ fires when at least one trigger matches.
 ## Known Limitations and Design Decisions
 
 **Single-user, local-only**: Deliberately designed for personal use on a local machine.
-No data leaves the host. Multi-tenancy would require auth and user_id FKs on all tables.
+No health records leave the host; only MedlinePlus lookup terms do (see [Data Privacy](#data-privacy)). Multi-tenancy would require auth and user_id FKs on all tables.
 
 **PDF parsing brittleness**: Two real-world layouts are supported — the EESZT
 numbered/LOINC tabular format and the legacy/Corden format — including colon-less
