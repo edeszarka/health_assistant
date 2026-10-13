@@ -44,7 +44,6 @@
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
 - 📱 **Samsung Health Import** – Robust ZIP parser for steps, sleep, heart rate, and body metrics; handles subfolder exports, prevents duplicates, and includes detailed logging for troubleshooting.
-- ⌚ **Zepp Life Import** – Support for Zepp Life ZIP data (includes AES-encrypted file support)
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
@@ -117,11 +116,10 @@ API docs available at: **http://localhost:8000/docs**
 2. See a personalized checklist of health screenings based on your profile and data
 3. Click on conditions to see detailed info from MedlinePlus
 
-### Import Samsung or Zepp Life Data
+### Import Samsung Health Data
 1. Go to **📂 Upload**
-2. Select the "Samsung Health" or "Zepp Life" tab
+2. Select the "Samsung Health" tab
 3. Upload your ZIP export
-4. For Zepp Life, enter the export password if requested
 
 ---
 
@@ -144,13 +142,13 @@ API docs available at: **http://localhost:8000/docs**
 | Component | Technology |
 |---|---|
 | Backend | FastAPI 0.110+, Python 3.12, Pydantic v2 |
-| Frontend | Streamlit, Pandas, Plotly |
+| Frontend | Streamlit, Pandas |
 | Database | PostgreSQL 16 + pgvector extension |
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
 | LLM | Ollama — llama3.2:3b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
 | Orchestration | None — direct Ollama REST calls via httpx |
-| Parsing | pdfplumber, pyzipper |
+| Parsing | pdfplumber |
 | External API | MedlinePlus Web Service (NIH, no key) |
 | Testing | pytest, pytest-asyncio, httpx |
 | Containers | Docker + Docker Compose |
