@@ -699,7 +699,8 @@ async def chat(
     try:
         result  = await db.execute(select(UserProfile).limit(1))
         profile = result.scalar_one_or_none()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not load user profile: %s", exc)
         profile = None
 
     # Date-specific context if a date is mentioned
@@ -733,17 +734,21 @@ async def chat(
     if "risk" in intents:
         risk_scores = await _build_risk_scores(db, profile, request.message)
 
-    # RAG — semantic search for medical knowledge only, no structured data
+    # RAG — semantic search over the user's stored records
     try:
         rag_context = await rag_service.build_context(request.message, profile, db)
-    except Exception as e:
-        rag_context = f"(Medical knowledge retrieval unavailable due to system error: {e})"
+    except Exception as exc:
+        # Keep error details out of the prompt; they belong in the log.
+        logger.error("RAG context retrieval failed: %s", exc)
+        rag_context = "(Context retrieval unavailable.)"
 
     # LLM — receives everything, decides nothing about data fetching
     try:
         reply = await llm_service.chat(
             message=request.message,
-            conversation_history=request.conversation_history,
+            conversation_history=[
+                turn.model_dump() for turn in request.conversation_history
+            ],
             context=rag_context,
             user_profile=profile,
             risk_scores=risk_scores,
@@ -754,6 +759,10 @@ async def chat(
             family_history_summary=family_summary,
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")
+        logger.error("LLM request failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="The language model is unavailable. Please try again later.",
+        )
 
     return ChatResponse(reply=reply, sources=[])

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Literal, Optional, List
 from pydantic import BaseModel
 
 
@@ -104,11 +104,22 @@ class FamilyHistoryResponse(BaseModel):
 # ─── Chat ────────────────────────────────────────────────────────────────────
 
 
+class ChatTurn(BaseModel):
+    """One earlier turn of the conversation.
+
+    Only user and assistant turns are accepted, so a client cannot inject a
+    system message that would override the server-side system prompt.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     """User chat message + conversation history."""
 
     message: str
-    conversation_history: List[dict] = []
+    conversation_history: List[ChatTurn] = []
 
 
 class ChatResponse(BaseModel):

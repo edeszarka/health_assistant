@@ -108,7 +108,7 @@ class LLMService:
         Args:
             message: The user's latest message.
             conversation_history: List of {"role": ..., "content": ...} dicts.
-            context: RAG context string (medical knowledge, not personal data).
+            context: RAG context string: semantic matches from the user's stored records.
             user_profile: UserProfile ORM row or None.
             risk_scores: Dict with framingham_risk_percent and findrisc_score.
             user_language: "English" or "Hungarian" — detected from message.

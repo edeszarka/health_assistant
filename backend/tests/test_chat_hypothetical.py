@@ -80,3 +80,25 @@ async def test_hypothetical_framingham_reports_unconvertible_unit():
     assert line is not None
     assert "Cannot recalculate" in line
     assert "mg/dL" in line
+
+
+@pytest.mark.asyncio
+async def test_hypothetical_scores_are_never_persisted():
+    """Invariant: hypothetical recalculations stay in memory, nothing is written."""
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.execute.side_effect = [_scalar(None)]  # _get_latest_weight only
+
+    with patch(
+        "routers.chat.compute_baseline_scores", new=AsyncMock(return_value={})
+    ):
+        scores = await _build_risk_scores(
+            db,
+            _profile(),
+            "what if my total cholesterol is 200 and hdl is 50 and systolic is 140",
+        )
+
+    assert "% 10-yr CV risk" in scores.get("framingham_hypothetical", "")
+    db.add.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.commit.assert_not_awaited()
