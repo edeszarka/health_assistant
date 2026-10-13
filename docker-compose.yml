@@ -9,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U healthuser -d healthassistant" ]
       interval: 5s
@@ -21,7 +21,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     healthcheck:
       test: [ "CMD-SHELL", "ollama list || exit 1" ]
       interval: 10s
@@ -62,7 +62,7 @@ services:
       EMBED_MODEL: nomic-embed-text
       EMBED_DIMENSIONS: 768
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend:/app
       - ./data/uploads:/app/uploads
@@ -74,7 +74,7 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
 
 volumes:
   postgres_data:

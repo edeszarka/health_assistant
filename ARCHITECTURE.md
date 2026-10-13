@@ -194,6 +194,12 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    `false` in `frontend/.streamlit/config.toml:7`, which the frontend image
    copies into its working directory (`frontend/Dockerfile:3,13,19`).
 
+7. **Services are reachable only from the host.**
+   Every published port is bound to `127.0.0.1` (`docker-compose.yml:12,24,65,77`);
+   services reach each other over the Compose network by service name. The
+   API has no authentication, so this binding is what keeps other machines
+   on the network away from the data.
+
 ### (b) Targets — NOT yet implemented
 
 - **Target:** if requested data does not exist, the assistant says so instead
