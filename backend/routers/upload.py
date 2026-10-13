@@ -14,14 +14,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from database.connection import get_db
 from config import settings
 from ingestion.pdf_parser import PDFParser
-from ingestion.lab_normalizer import LabNormalizer
 from ingestion.samsung_parser import SamsungHealthParser
 from models.db_models import LabResult, SamsungHealthMetric
 from services.rag_service import rag_service
 
 router = APIRouter()
 pdf_parser = PDFParser()
-lab_norm = LabNormalizer()
 samsung_parser = SamsungHealthParser()
 
 
