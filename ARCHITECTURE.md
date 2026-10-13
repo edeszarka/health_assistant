@@ -26,14 +26,14 @@ Five Docker Compose services (`docker-compose.yml:3-76`):
 - **Routers** (`backend/main.py:42-50`): `/upload`, `/chat`, `/bp`,
   `/family-history`, `/dashboard`, `/recommendations`.
 - **Ingestion** (`backend/ingestion/`): PDF lab parser, lab-name normaliser,
-  unit converter, Samsung Health parser, Zepp Life parser.
+  unit converter, Samsung Health parser.
 - **Services** (`backend/services/`): LLM client, RAG (embeddings + vector
   search), risk engine (Framingham, FINDRISC, AHA blood pressure), risk-score
   persistence, screening rules, MedlinePlus client.
 
 Models: chat model from `settings.ollama_model` (default `llama3.2:3b`) and
 embedding model `nomic-embed-text` (`backend/config.py:10-11`), both served by
-Ollama over HTTP (`backend/services/llm_service.py:236`,
+Ollama over HTTP (`backend/services/llm_service.py:172`,
 `backend/services/rag_service.py:34`).
 
 ---
@@ -43,19 +43,21 @@ Ollama over HTTP (`backend/services/llm_service.py:236`,
 ### Lab PDF upload — `POST /upload/pdf`
 1. The PDF is saved to `settings.upload_dir` under a generated
    `timestamp_uuid` name; the original filename is not persisted
-   (`backend/routers/upload.py:47-57`).
+   (`backend/routers/upload.py:43-53`).
 2. `PDFParser` extracts values with pdfplumber and regular expressions; lab
    names are normalised by `LabNormalizer` inside the parser
    (`backend/ingestion/pdf_parser.py:203,417,464`). No LLM is involved.
 3. Each value is stored as a `LabResult` row and embedded as `lab_result`
-   (`backend/routers/upload.py:81-100`). Parse warnings are returned to the
-   caller (`backend/routers/upload.py:112`).
+   (`backend/routers/upload.py:77-96`). Parse warnings are returned to the
+   caller (`backend/routers/upload.py:108`).
 
-### Wearable upload — `POST /upload/samsung`, `POST /upload/zepp`
+### Wearable upload — `POST /upload/samsung`
 Daily summaries are upserted into `samsung_health_metrics`, keyed on
-`(metric_type, recorded_at)` (`backend/routers/upload.py:116-201`,
-`backend/routers/upload.py:206-288`). A Samsung upload also stores one
-`samsung_summary` embedding (`backend/routers/upload.py:201`).
+`(metric_type, recorded_at)` (`backend/routers/upload.py:112-197`). A Samsung
+upload also stores one `samsung_summary` embedding
+(`backend/routers/upload.py:197`). Rows written by the former Zepp Life
+import (metric types such as `resting_hr`, `sleep_total_min`, `avg_spo2`,
+`avg_stress`) remain in the table; the import itself has been removed.
 
 ### Blood pressure — `POST /bp/`
 The reading is stored, classified per AHA 2017 and a `bp_classification`
@@ -79,8 +81,8 @@ MedlinePlus to warm the cache (`backend/routers/family_history.py:55-67`).
    (`backend/services/rag_service.py:167`, threshold `backend/config.py:17`).
 5. Everything is formatted into the system prompt and sent to Ollama
    `/api/chat` (`backend/routers/chat.py:744`,
-   `backend/services/llm_service.py:236`). The response never cites sources
-   (`backend/routers/chat.py:760`).
+   `backend/services/llm_service.py:172`). The response never cites sources
+   (`backend/routers/chat.py:759`).
 
 ### Recommendations — `GET /recommendations/`
 Baseline risk scores are computed and persisted, then hard-coded
@@ -106,8 +108,8 @@ Reads lab results and the five latest `risk_scores` rows
   but `backend/database/migrations/versions/` holds no migrations.
 - **Vector store**: `embeddings.embedding` is `Vector(768)`
   (`backend/models/db_models.py:119`). Only three source types are written:
-  `lab_result` (`backend/routers/upload.py:100`), `samsung_summary`
-  (`backend/routers/upload.py:201`), `family_history`
+  `lab_result` (`backend/routers/upload.py:96`), `samsung_summary`
+  (`backend/routers/upload.py:197`), `family_history`
   (`backend/routers/family_history.py:58`). No medical literature or guideline
   text is embedded.
 - **Files**: uploaded PDFs are kept on disk in `settings.upload_dir`
@@ -120,7 +122,7 @@ Reads lab results and the five latest `risk_scores` rows
 
 | Call | From | What is sent | Evidence |
 |---|---|---|---|
-| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:236`, `backend/services/rag_service.py:34` |
+| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:172`, `backend/services/rag_service.py:34` |
 | MedlinePlus Web Service | backend | A topic search term | `backend/config.py:14`, `backend/services/medlineplus_service.py:100-104` |
 | MedlinePlus Connect | backend | An ICD-10 code | `backend/config.py:15`, `backend/services/medlineplus_service.py:136-144` |
 
@@ -166,7 +168,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    `backend/tests/test_llm_service.py`. Whether the model obeys cannot be
    enforced in code. Known exception: `conversation_history` is forwarded to
    the model verbatim from the client, roles unchecked
-   (`backend/models/api_models.py:111`, `backend/services/llm_service.py:217`).
+   (`backend/models/api_models.py:111`, `backend/services/llm_service.py:157`).
 
 4. **The backend's only external call is MedlinePlus; it receives condition
    or topic terms only:**
@@ -183,7 +185,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    The prompt labels retrieved context as "semantic search over stored health
    records" from "the user's own records"
    (`backend/services/llm_service.py:55,61`); chat responses cite no sources
-   (`backend/routers/chat.py:760`). Known exception: when retrieval fails, the
+   (`backend/routers/chat.py:759`). Known exception: when retrieval fails, the
    fallback text placed in the context reads "Medical knowledge retrieval
    unavailable" (`backend/routers/chat.py:740`).
 
@@ -196,7 +198,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
 
 - **Target:** if requested data does not exist, the assistant says so instead
   of answering. Today only default placeholder strings are passed
-  (`backend/services/llm_service.py:205-206`); nothing prevents an answer.
+  (`backend/services/llm_service.py:145-146`); nothing prevents an answer.
 - **Target:** the LLM runs only when needed. Today every chat message calls the
   LLM (`backend/routers/chat.py:744`).
 - **Target:** MedlinePlus content is used in chat answers. Today MedlinePlus

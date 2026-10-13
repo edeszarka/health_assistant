@@ -208,7 +208,7 @@ async def _build_date_specific_summary(message: str, db: AsyncSession) -> str:
 # ---------------------------------------------------------------------------
 
 async def _build_health_metrics_summary(db: AsyncSession) -> str:
-    """Build a summary of activity and biometric numbers from Samsung Health and Zepp.
+    """Build a summary of activity and biometric numbers from stored wearable metrics.
 
     Covers last 7 days detail, 30-day averages, weight, and calories.
 
@@ -747,7 +747,6 @@ async def chat(
             context=rag_context,
             user_profile=profile,
             risk_scores=risk_scores,
-            query_type=getattr(request, "query_type", "general"),
             user_language=user_language,
             health_metrics_summary=metrics_summary,
             flagged_values=lab_summary,
