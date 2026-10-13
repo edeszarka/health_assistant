@@ -131,7 +131,7 @@ API docs available at: **http://localhost:8000/docs**
 | Blood pressure | ✅ Stored only in your local PostgreSQL |
 | Family history | ✅ Stored only in your local PostgreSQL |
 | AI inference | ✅ Runs entirely on Ollama (local) |
-| MedlinePlus queries | ⚠️ Lookup terms only: screening condition names, ICD-10 codes, and family-history conditions exactly as you type them. No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
+| MedlinePlus queries | ⚠️ Lookup terms only: screening condition names and the ICD-10 codes you enter for family history (free-text conditions are never sent). No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
 | `/data/` folder | 🚫 In `.gitignore` — never committed |
 | `.env` file | 🚫 In `.gitignore` — never committed |
 
