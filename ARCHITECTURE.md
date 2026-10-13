@@ -133,7 +133,7 @@ Streamlit usage statistics from the frontend are disabled
 (`frontend/.streamlit/config.toml:7`).
 
 MedlinePlus calls are rate-limited and cached for `medlineplus_cache_ttl_days`
-(`backend/services/medlineplus_service.py:22-66,221-275`).
+(`backend/services/medlineplus_service.py:22-66,221-280`).
 
 ---
 
