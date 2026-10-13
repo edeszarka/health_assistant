@@ -608,7 +608,13 @@ async def _build_risk_scores(
                 fram_overrides["systolic_bp"] = int(val)
                 fram_labels.append(f"systolic_bp={val}")
 
-            if fram_labels and profile:
+            if fram_labels and profile and not risk_engine.framingham_supported(
+                profile.sex
+            ):
+                scores["framingham_hypothetical"] = (
+                    "Not available: " + risk_engine.FRAMINGHAM_UNSUPPORTED_REASON + "."
+                )
+            elif fram_labels and profile:
                 # Fallback lab values are converted from each row's own unit;
                 # a row whose unit cannot be converted is reported explicitly
                 # rather than silently tripping the risk engine's mg/dL guard.

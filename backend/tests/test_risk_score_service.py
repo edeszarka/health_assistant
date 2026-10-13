@@ -161,3 +161,22 @@ async def test_no_profile_returns_nones_without_writes():
     }
     db.execute.assert_not_called()
     db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_female_profile_gets_no_framingham_score():
+    """The female Framingham table is a placeholder, so no score is shown or saved."""
+    db = _mock_db([
+        _row((5.2, "mmol/L")),  # total cholesterol
+        _row((1.3, "mmol/L")),  # HDL cholesterol
+        _row((120,)),           # systolic
+        _row((70.0,)),          # weight
+        _row(None),             # latest findrisc
+    ])
+
+    result = await compute_baseline_scores(db, _profile(sex="female"))
+
+    assert result["framingham_risk_percent"] is None
+    assert result["findrisc_score"] is not None
+    added = [call.args[0] for call in db.add.call_args_list]
+    assert all(row.score_type != "framingham" for row in added)

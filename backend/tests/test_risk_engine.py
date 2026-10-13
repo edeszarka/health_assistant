@@ -167,3 +167,12 @@ def test_bp_high_systolic_with_low_diastolic_is_not_stage_1(engine):
     """Regression: a low diastolic must not downgrade a severe systolic value."""
     assert engine.classify_blood_pressure(185, 85)["category"] == "Hypertensive Crisis"
     assert engine.classify_blood_pressure(160, 85)["category"] == "Stage 2 Hypertension"
+
+
+@pytest.mark.parametrize(
+    ("sex", "supported"),
+    [("male", True), ("Male", True), ("female", False), (None, False), ("", False)],
+)
+def test_framingham_supported_only_for_validated_male_table(engine, sex, supported):
+    """Only the male table is validated; everything else must be withheld."""
+    assert engine.framingham_supported(sex) is supported

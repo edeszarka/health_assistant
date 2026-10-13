@@ -277,8 +277,9 @@ score may be unavailable instead of wrong.
 
 **Female Framingham table is a placeholder**: `_FRAMINGHAM_RISK_FEMALE` in
 `backend/services/risk_engine.py` is currently a copy of the male
-points-to-risk table. It must be replaced with the published Wilson et al. 1998
-women's table before the female 10-year score can be trusted.
+points-to-risk table. Until it is replaced with the published Wilson et al. 1998
+women's table, no Framingham score is shown or saved for women (FINDRISC is
+unaffected).
 
 **FINDRISC activity is assumed**: the calculator still assumes 30 minutes of
 daily physical activity instead of deriving it from the stored wearable step
