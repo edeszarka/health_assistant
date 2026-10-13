@@ -63,9 +63,12 @@ import (metric types such as `resting_hr`, `sleep_total_min`, `avg_spo2`,
 The reading is stored, classified per AHA 2017 and a `bp_classification`
 row is written to `risk_scores` (`backend/routers/blood_pressure.py:83-96`).
 
-### Family history — `POST /family-history/`
-The entry is stored, embedded as `family_history`, then looked up on
-MedlinePlus to warm the cache (`backend/routers/family_history.py:55-67`).
+### Family history — `POST /family-history/`, `DELETE /family-history/{id}`
+The entry is stored and embedded as `family_history`; if an ICD-10 code was
+entered, that code is looked up on MedlinePlus Connect to warm the cache
+(`backend/routers/family_history.py:49-73`). Deleting an entry also deletes its
+embedding, so chat retrieval no longer returns it
+(`backend/routers/family_history.py:98-104`).
 
 ### Chat — `POST /chat/`
 1. Language detection and keyword intent detection
@@ -110,7 +113,7 @@ Reads lab results and the five latest `risk_scores` rows
   (`backend/models/db_models.py:119`). Only three source types are written:
   `lab_result` (`backend/routers/upload.py:96`), `samsung_summary`
   (`backend/routers/upload.py:197`), `family_history`
-  (`backend/routers/family_history.py:58`). No medical literature or guideline
+  (`backend/routers/family_history.py:64`). No medical literature or guideline
   text is embedded.
 - **Files**: uploaded PDFs are kept on disk in `settings.upload_dir`
   (`backend/config.py:13`), mounted from `./data/uploads` in Compose
@@ -172,10 +175,8 @@ before it is made (see [AGENTS.md](AGENTS.md)).
 
 4. **The backend's only external call is MedlinePlus; it receives condition
    or topic terms only:**
-   - the ICD-10 code the user entered for a family-history entry
-     (`backend/routers/family_history.py:63`);
-   - the user's free-text family-history condition, verbatim, when no ICD-10
-     code is given (`backend/routers/family_history.py:65`);
+   - the ICD-10 code the user entered for a family-history entry; the
+     free-text condition is never sent (`backend/routers/family_history.py:67-69`);
    - screening condition names from the hard-coded `SCREENING_RULES`
      (`backend/services/screening_service.py:44,196`). Which names are sent
      depends on the user's age, sex, family history and flagged labs, so the
