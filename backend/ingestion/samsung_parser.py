@@ -218,7 +218,8 @@ class SamsungHealthParser:
                 reader = csv.DictReader(io.StringIO("\n".join(lines[header_idx:])))
                 rows = list(reader)
                 if rows: return rows
-            except Exception:
+            except Exception as exc:
+                logger.debug("CSV decode with %s failed: %s", encoding, type(exc).__name__)
                 continue
         return []
 
@@ -231,8 +232,8 @@ class SamsungHealthParser:
         if raw_str.isdigit() and len(raw_str) >= 10:
             try:
                 return datetime.fromtimestamp(int(raw_str) / 1000.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Epoch date parse failed for %r: %s", raw_str, type(exc).__name__)
 
         for fmt in (
             "%Y-%m-%d %H:%M:%S.%f",
