@@ -113,6 +113,28 @@ class RiskEngine:
         13: 12, 14: 16, 15: 20, 16: 25,
     }
 
+    # Shown/logged when a Framingham score is withheld; see framingham_supported.
+    FRAMINGHAM_UNSUPPORTED_REASON = (
+        "no validated Framingham risk table for women yet"
+    )
+
+    @staticmethod
+    def framingham_supported(sex: str | None) -> bool:
+        """Return whether a trustworthy Framingham score exists for ``sex``.
+
+        Only the male points-to-risk table is validated; the female table is a
+        placeholder copy (see ``_FRAMINGHAM_RISK_FEMALE``). Callers must not
+        show or persist a Framingham score when this returns ``False``. Uses
+        the same rule as ``calculate_framingham`` to pick the table.
+
+        Args:
+            sex: The profile's sex value, or ``None``.
+
+        Returns:
+            ``True`` only when ``calculate_framingham`` would use the male table.
+        """
+        return (sex or "").lower() == "male"
+
     def calculate_framingham(
         self,
         age: int,

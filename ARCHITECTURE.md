@@ -72,20 +72,20 @@ embedding, so chat retrieval no longer returns it
 
 ### Chat — `POST /chat/`
 1. Language detection and keyword intent detection
-   (`backend/routers/chat.py:693,696`).
+   (`backend/routers/chat.py:699,702`).
 2. SQL context builders run only for the detected intents: date-specific,
    wearable metrics, lab trends, blood pressure, family history, risk scores
-   (`backend/routers/chat.py:706-735`).
+   (`backend/routers/chat.py:712-741`).
 3. Risk scores: baseline scores are computed and persisted by
    `compute_baseline_scores`; hypothetical ("what if") scores are computed in
-   memory (`backend/routers/chat.py:535,542-664`).
+   memory (`backend/routers/chat.py:535,542-670`).
 4. RAG: the message is embedded and the five nearest `embeddings` rows above
    the similarity threshold are retrieved, with no source-type filter
    (`backend/services/rag_service.py:167`, threshold `backend/config.py:17`).
 5. Everything is formatted into the system prompt and sent to Ollama
-   `/api/chat` (`backend/routers/chat.py:747`,
+   `/api/chat` (`backend/routers/chat.py:753`,
    `backend/services/llm_service.py:172`). The response never cites sources
-   (`backend/routers/chat.py:768`).
+   (`backend/routers/chat.py:774`).
 
 ### Recommendations — `GET /recommendations/`
 Baseline risk scores are computed and persisted, then hard-coded
@@ -149,20 +149,20 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    Stored lab values are converted only from mg/dL or mmol/L; anything else
    returns `None` with a warning (`backend/ingestion/unit_converter.py:50-70`).
    Missing inputs skip the score with no defaults substituted
-   (`backend/services/risk_score_service.py:73-96,131-147`); the hypothetical
+   (`backend/services/risk_score_service.py:73-96,131-152`); the hypothetical
    fallback uses the same converter (`backend/routers/chat.py:498-503`).
    Exception: cholesterol values typed into a "what if" question carry no unit
    and are read as mg/dL (`backend/routers/chat.py:595-604`); values in the
    mmol/L range are rejected by the plausibility guard
-   (`backend/services/risk_engine.py:149-160`), the error is logged and no
-   hypothetical score is shown (`backend/routers/chat.py:662-663`).
+   (`backend/services/risk_engine.py:171-182`), the error is logged and no
+   hypothetical score is shown (`backend/routers/chat.py:668-669`).
 
 2. **Hypothetical ("what if") recalculations are never persisted.**
    The hypothetical branch only reads from the database
    (`backend/routers/chat.py:489,508,518`) and returns its results in memory
-   (`backend/routers/chat.py:542-664`); only baseline scores are persisted, via
+   (`backend/routers/chat.py:542-670`); only baseline scores are persisted, via
    `compute_baseline_scores` (`backend/routers/chat.py:535`,
-   `backend/services/risk_score_service.py:306-336`). Locked by
+   `backend/services/risk_score_service.py:311-341`). Locked by
    `test_hypothetical_scores_are_never_persisted`
    (`backend/tests/test_chat_hypothetical.py`).
 
@@ -189,9 +189,9 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    The prompt labels retrieved context as "semantic search over stored health
    records" from "the user's own records"
    (`backend/services/llm_service.py:55,61`); chat responses cite no sources
-   (`backend/routers/chat.py:768`). When retrieval fails, the context only
+   (`backend/routers/chat.py:774`). When retrieval fails, the context only
    says "(Context retrieval unavailable.)" and the error goes to the log
-   (`backend/routers/chat.py:740-743`).
+   (`backend/routers/chat.py:746-749`).
 
 6. **No usage telemetry leaves the host.**
    Streamlit's `browser.gatherUsageStats` defaults to `true`; it is set to
@@ -204,16 +204,22 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    API has no authentication, so this binding is what keeps other machines
    on the network away from the data.
 
+8. **Risk scores that cannot be computed correctly are not shown.**
+   The female Framingham points-to-risk table is a placeholder copy of the
+   male table (`backend/services/risk_engine.py:107-114`).
+   `framingham_supported` allows only the validated male table
+   (`backend/services/risk_engine.py:122-136`); otherwise no baseline score is
+   computed or saved (`backend/services/risk_score_service.py:147-151`) and a
+   "what if" question gets an explicit "Not available" instead of a number
+   (`backend/routers/chat.py:611-616`).
+
 ### (b) Targets — NOT yet implemented
 
 - **Target:** if requested data does not exist, the assistant says so instead
   of answering. Today only default placeholder strings are passed
   (`backend/services/llm_service.py:145-146`); nothing prevents an answer.
 - **Target:** the LLM runs only when needed. Today every chat message calls the
-  LLM (`backend/routers/chat.py:747`).
+  LLM (`backend/routers/chat.py:753`).
 - **Target:** MedlinePlus content is used in chat answers. Today MedlinePlus
   results are only displayed on the recommendations page and never reach the
   prompt.
-- **Target:** risk scores that cannot be computed correctly are not shown.
-  Today the female Framingham table is a copy of the male table
-  (`backend/services/risk_engine.py:107-114`) and the score is shown anyway.

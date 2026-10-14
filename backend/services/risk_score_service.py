@@ -144,6 +144,11 @@ def _compute_framingham(
     if missing:
         logger.warning("Framingham skipped: missing %s.", ", ".join(missing))
         return None
+    if not risk_engine.framingham_supported(profile.sex):
+        logger.warning(
+            "Framingham skipped: %s.", risk_engine.FRAMINGHAM_UNSUPPORTED_REASON
+        )
+        return None
 
     tc_value, tc_unit = total_cholesterol
     hdl_value, hdl_unit = hdl_cholesterol
