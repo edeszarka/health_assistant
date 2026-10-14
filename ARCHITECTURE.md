@@ -92,7 +92,7 @@ Baseline risk scores are computed and persisted, then hard-coded
 `SCREENING_RULES` are matched against age, sex, family history and flagged labs;
 each matched condition is looked up on MedlinePlus for a summary and link
 (`backend/routers/recommendations.py:36-55`,
-`backend/services/screening_service.py:44,161,196`).
+`backend/services/screening_service.py:42,143,178`).
 
 ### Dashboard — `GET /dashboard/summary`
 Reads lab results and the five latest `risk_scores` rows
@@ -181,7 +181,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    - the ICD-10 code the user entered for a family-history entry; the
      free-text condition is never sent (`backend/routers/family_history.py:67-69`);
    - screening condition names from the hard-coded `SCREENING_RULES`
-     (`backend/services/screening_service.py:44,196`). Which names are sent
+     (`backend/services/screening_service.py:42,178`). Which names are sent
      depends on the user's age, sex, family history and flagged labs, so the
      set of queries indirectly reflects that profile.
 

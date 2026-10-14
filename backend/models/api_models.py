@@ -139,7 +139,6 @@ class DashboardSummary(BaseModel):
     bp_summary: Optional[BPSummaryResponse]
     risk_scores: List[dict]
     active_flags: List[str]
-    recommendations_count: int
 
 
 # ─── Screening ───────────────────────────────────────────────────────────────
