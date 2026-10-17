@@ -62,10 +62,14 @@ Ollama over HTTP (`backend/services/llm_service.py:172`,
    rows are removed (`backend/scripts/reimport_labs.py`).
 
 ### Wearable upload — `POST /upload/samsung`
-Daily summaries are upserted into `samsung_health_metrics`, keyed on
-`(metric_type, recorded_at)` (`backend/routers/upload.py:77-165`). A Samsung
+Exactly one export ZIP is accepted and parsed in memory; nothing is written to
+disk, so the client-supplied filename cannot steer a write path, and the export
+(whose filename carries the Samsung account name) is not retained. Rows store a
+generated `samsung_<timestamp>_<uuid>` identifier, never the original filename
+(`backend/routers/upload.py:95,101,104`). Daily summaries are upserted into `samsung_health_metrics`, keyed on
+`(metric_type, recorded_at)` (`backend/routers/upload.py:77-157`). A Samsung
 upload also stores one `samsung_summary` embedding
-(`backend/routers/upload.py:165`). Rows written by the former Zepp Life
+(`backend/routers/upload.py:157`). Rows written by the former Zepp Life
 import (metric types such as `resting_hr`, `sleep_total_min`, `avg_spo2`,
 `avg_stress`) remain in the table; the import itself has been removed.
 
@@ -129,7 +133,7 @@ Reads lab results and the five latest `risk_scores` rows
 - **Vector store**: `embeddings.embedding` is `Vector(768)`
   (`backend/models/db_models.py:119`). Only three source types are written:
   `lab_result` (`backend/services/lab_ingest.py:41`), `samsung_summary`
-  (`backend/routers/upload.py:165`), `family_history`
+  (`backend/routers/upload.py:157`), `family_history`
   (`backend/routers/family_history.py:62`). Lab and family-history texts are
   one bilingual line per record built by `backend/services/embedding_text.py:15,44`
   (the report's own test name next to the normalised key); no chunking. No
