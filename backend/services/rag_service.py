@@ -114,17 +114,15 @@ class RAGService:
 
         try:
             vector = await self.embed_text(query)
-            # pgvector operator <=> is cosine distance
-            stmt = select(Embedding.content).where(
-                # only return chunks closer than threshold
-                (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
-            )
+            # cosine_distance (pgvector's <=>) yields a Float expression, so the
+            # threshold binds as a number. A raw `1 - embedding.op("<=>")(v)`
+            # gives the literals the VECTOR type and fails at bind time.
+            distance = Embedding.embedding.cosine_distance(vector)
+            # similarity = 1 - distance, so `similarity >= threshold` becomes:
+            stmt = select(Embedding.content).where(distance <= 1 - threshold)
             if source_types:
                 stmt = stmt.where(Embedding.source_type.in_(source_types))
-            stmt = (
-                stmt.order_by(Embedding.embedding.op("<=>")(vector))
-                .limit(limit)
-            )
+            stmt = stmt.order_by(distance).limit(limit)
             result = await db.execute(stmt)
             return [row[0] for row in result.fetchall()]
         except Exception as exc:

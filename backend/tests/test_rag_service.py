@@ -70,6 +70,32 @@ async def test_similarity_search_returns_content(service):
 
 
 @pytest.mark.asyncio
+async def test_similarity_search_binds_are_processable(service):
+    """Every bind value must survive its type's bind processor, as the driver runs it.
+
+    Regression: `1 - embedding.op("<=>")(v)` typed the literals as VECTOR, so
+    pgvector's bind processor raised on every live query while mocked tests
+    stayed green because the statement was never bound.
+    """
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_result
+
+    with patch.object(service, "embed_text", return_value=FAKE_EMBEDDING):
+        await service.similarity_search(
+            "blood test", threshold=0.6, source_types=["lab_result"], db=mock_db
+        )
+
+    dialect = postgresql.dialect()
+    compiled = mock_db.execute.call_args.args[0].compile(dialect=dialect)
+    for bind, name in compiled.bind_names.items():
+        processor = bind.type.dialect_impl(dialect).bind_processor(dialect)
+        if processor is not None:
+            processor(compiled.params[name])  # raises on a type mismatch
+
+
+@pytest.mark.asyncio
 async def test_similarity_search_no_db_returns_empty(service):
     """similarity_search with db=None should return [] without error."""
     result = await service.similarity_search("anything", limit=5, db=None)
