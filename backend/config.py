@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     medlineplus_cache_ttl_days: int = 7
     # RAG operating point, chosen with `python -m eval.retrieval_eval` on 20 HU/EN
     # questions + 5 off-topic ones (2026-10-17, nomic-embed-text with task
-    # prefixes): top-1 at >= 0.62 gave recall 80% (HU 70%, EN 90%) at 80%
-    # precision. More results raised recall to 85% but dropped precision to
-    # 40-48%, which distracts a small chat model. Re-run the eval after changing
-    # the embedding model, templates or data.
+    # prefixes, 42 stored records): top-1 at >= 0.62 gave recall 85% (HU 70%,
+    # EN 100%) at 85% precision with no off-topic hits. More results raised
+    # recall to at most 90% but dropped precision to 32-50%, which distracts a
+    # small chat model. Re-run the eval after changing the embedding model,
+    # templates or data.
     rag_similarity_threshold: float = 0.62
     rag_top_k: int = 1
 

@@ -35,6 +35,7 @@ class LabNormalizer:
         # Metabolic
         "vércukor": "glucose",
         "glukóz": "glucose",
+        "glükóz": "glucose",  # spelling printed on EESZT reports
         "glucose": "glucose",
         "cukor": "glucose",
         "hba1c": "hba1c",

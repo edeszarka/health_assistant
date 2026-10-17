@@ -199,6 +199,17 @@ class PDFParser:
         "validálta",
     }
 
+    # Result names that are really patient/document header fields. Multi-page
+    # reports repeat the header block after the results table has started, and
+    # its "Label: 123" lines then parse as results (ID, address, referral, or
+    # a doctor's "Name (NEAK: code)" line). Matched on the parsed name, so a
+    # header label must be a prefix, while NEAK can appear anywhere.
+    _HEADER_NAME_RE = re.compile(
+        r"^(azonosító|cím|lakcím|szervezeti egység|beutaló|eeszt|oldal|név"
+        r"|születési|intézmény|telefon|pecsétszám|taj)\b|\bneak\b",
+        re.IGNORECASE,
+    )
+
     def __init__(self) -> None:
         self.normalizer = LabNormalizer()
 
@@ -366,7 +377,29 @@ class PDFParser:
             if gm:
                 current_group = gm.group(1).strip()
 
-        return results
+        return self._drop_header_like(results, errors)
+
+    def _drop_header_like(
+        self, results: list[LabValue], errors: list[str]
+    ) -> list[LabValue]:
+        """Remove rows whose name is a patient/document header field.
+
+        Args:
+            results: Parsed rows.
+            errors: Parse warnings; receives one count-only entry when rows are
+                dropped (never the row text, which is patient data).
+
+        Returns:
+            The rows that are genuine lab results.
+        """
+        kept = [r for r in results if not self._HEADER_NAME_RE.search(r.raw_name)]
+        dropped = len(results) - len(kept)
+        if dropped:
+            errors.append(
+                f"Skipped {dropped} header-like row(s) (patient or document "
+                "details, not lab results)."
+            )
+        return kept
 
     def _parse_tabular_line(
         self,
