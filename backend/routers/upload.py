@@ -16,6 +16,7 @@ from config import settings
 from ingestion.pdf_parser import PDFParser
 from ingestion.samsung_parser import SamsungHealthParser
 from models.db_models import LabResult, SamsungHealthMetric
+from services.embedding_text import lab_result_text
 from services.rag_service import rag_service
 
 logger = logging.getLogger(__name__)
@@ -91,9 +92,8 @@ async def upload_pdf(
             await db.flush()
 
             # Embed
-            embed_text = (
-                f"Lab result: {normalised_name} = {value} {lab.unit}. "
-                f"{'FLAGGED OUT OF RANGE.' if is_flagged else 'Within reference range.'}"
+            embed_text = lab_result_text(
+                lab.raw_name, normalised_name, value, lab.unit, is_flagged
             )
             await rag_service.store_embedding("lab_result", row.id, embed_text, db)
             stored += 1

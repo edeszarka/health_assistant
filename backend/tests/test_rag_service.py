@@ -33,10 +33,49 @@ async def test_embed_text_returns_list(service):
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_cls.return_value = mock_http
 
-        result = await service.embed_text("blood glucose level")
+        result = await service.embed_text("blood glucose level", task="document")
 
     assert isinstance(result, list)
     assert len(result) == 768
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("task", "prefix"),
+    [("document", "search_document: "), ("query", "search_query: ")],
+)
+async def test_embed_text_sends_nomic_task_prefix(service, task, prefix):
+    """Documents and queries must carry nomic-embed-text's task prefixes."""
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {"embedding": FAKE_EMBEDDING}
+    fake_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.post.return_value = fake_resp
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_http
+
+        await service.embed_text("Koleszterin", task=task)
+
+    assert mock_http.post.call_args.kwargs["json"]["prompt"] == prefix + "Koleszterin"
+
+
+@pytest.mark.asyncio
+async def test_store_and_search_use_document_and_query_tasks(service):
+    """Stored texts embed as documents, user questions as queries."""
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_result
+
+    with patch.object(service, "embed_text", AsyncMock(return_value=FAKE_EMBEDDING)) as embed:
+        await service.store_embedding("lab_result", 1, "text", mock_db)
+        await service.similarity_search("question", db=mock_db)
+
+    assert [c.kwargs["task"] for c in embed.await_args_list] == ["document", "query"]
 
 
 @pytest.mark.asyncio
