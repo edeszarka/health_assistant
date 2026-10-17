@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.connection import get_db
 from models.api_models import FamilyHistoryCreate, FamilyHistoryResponse
 from models.db_models import Embedding, FamilyHistory
+from services.embedding_text import family_history_text
 from services.rag_service import rag_service
 from services.medlineplus_service import medlineplus_service
 
@@ -57,10 +58,7 @@ async def add_family_history(
     await db.flush()
 
     # Embed
-    embed_text = (
-        f"Family history: {data.relation} had {data.condition}"
-        f"{f', onset age {data.age_of_onset}' if data.age_of_onset else ''}."
-    )
+    embed_text = family_history_text(data.relation, data.condition, data.age_of_onset)
     await rag_service.store_embedding("family_history", entry.id, embed_text, db)
 
     # MedlinePlus enrichment (fire-and-forget; errors do not fail the request)

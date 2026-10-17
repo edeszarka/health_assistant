@@ -13,9 +13,26 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      # Throwaway pgvector database for tests/test_rag_integration.py.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: healthuser
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: healthassistant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U healthuser -d healthassistant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql+asyncpg://healthuser:pw@localhost:5432/healthassistant
       SYNC_DATABASE_URL: postgresql+psycopg2://healthuser:pw@localhost:5432/healthassistant
+      # Enables the real-database integration tests (skipped everywhere else).
+      RUN_DB_INTEGRATION: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

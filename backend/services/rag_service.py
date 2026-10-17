@@ -7,7 +7,7 @@ used.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from sqlalchemy import select, text
@@ -20,6 +20,16 @@ from models.db_models import Embedding
 import logging
 
 logger = logging.getLogger(__name__)
+
+# nomic-embed-text (v1.5) needs a task prefix on every input, and documents and
+# queries use different ones; without them retrieval quality drops. Source:
+# https://huggingface.co/nomic-ai/nomic-embed-text-v1.5 ("Task instruction
+# prefixes"). Revisit these if settings.embed_model changes.
+EmbedTask = Literal["document", "query"]
+_TASK_PREFIXES: dict[str, str] = {
+    "document": "search_document: ",
+    "query": "search_query: ",
+}
 
 
 class RAGService:
@@ -36,11 +46,13 @@ class RAGService:
 
     # ── Embedding ────────────────────────────────────────────────────────────
 
-    async def embed_text(self, text_content: str) -> list[float]:
+    async def embed_text(self, text_content: str, task: EmbedTask) -> list[float]:
         """Generate an embedding vector for the given text using Ollama.
 
         Args:
             text_content: The text string to be converted into a vector embedding.
+            task: ``"document"`` for stored texts, ``"query"`` for user questions;
+                selects the model's task prefix.
 
         Returns:
             A 768-dimensional float list representing the semantic embedding of the text.
@@ -52,7 +64,10 @@ class RAGService:
             async with httpx.AsyncClient(timeout=1020.0) as client:
                 resp = await client.post(
                     self._embed_url,
-                    json={"model": self._embed_model, "prompt": text_content},
+                    json={
+                        "model": self._embed_model,
+                        "prompt": _TASK_PREFIXES[task] + text_content,
+                    },
                 )
                 resp.raise_for_status()
                 return resp.json()["embedding"]
@@ -74,7 +89,7 @@ class RAGService:
             content: The actual text content to be embedded and stored.
             db: The asynchronous SQLAlchemy database session.
         """
-        vector = await self.embed_text(content)
+        vector = await self.embed_text(content, task="document")
         emb = Embedding(
             source_type=source_type,
             source_id=source_id,
@@ -100,7 +115,7 @@ class RAGService:
             query: The user's question or search topic.
             limit: The maximum number of results to return. Defaults to 5.
             threshold: The minimum similarity score (1 - cosine distance).
-                Defaults to ``settings.rag_similarity_threshold`` (0.75).
+                Defaults to ``settings.rag_similarity_threshold``.
             db: The asynchronous SQLAlchemy database session.
             source_types: Optional allow-list of ``Embedding.source_type`` values.
                 When provided, only chunks whose source type is in the list are
@@ -113,18 +128,16 @@ class RAGService:
             return []
 
         try:
-            vector = await self.embed_text(query)
-            # pgvector operator <=> is cosine distance
-            stmt = select(Embedding.content).where(
-                # only return chunks closer than threshold
-                (1 - Embedding.embedding.op("<=>")(vector)) >= threshold
-            )
+            vector = await self.embed_text(query, task="query")
+            # cosine_distance (pgvector's <=>) yields a Float expression, so the
+            # threshold binds as a number. A raw `1 - embedding.op("<=>")(v)`
+            # gives the literals the VECTOR type and fails at bind time.
+            distance = Embedding.embedding.cosine_distance(vector)
+            # similarity = 1 - distance, so `similarity >= threshold` becomes:
+            stmt = select(Embedding.content).where(distance <= 1 - threshold)
             if source_types:
                 stmt = stmt.where(Embedding.source_type.in_(source_types))
-            stmt = (
-                stmt.order_by(Embedding.embedding.op("<=>")(vector))
-                .limit(limit)
-            )
+            stmt = stmt.order_by(distance).limit(limit)
             result = await db.execute(stmt)
             return [row[0] for row in result.fetchall()]
         except Exception as exc:
@@ -164,7 +177,7 @@ class RAGService:
         sections: list[str] = []
 
         # 1. Semantic search for relevant matches
-        similar = await self.similarity_search(query, limit=5, db=db)
+        similar = await self.similarity_search(query, limit=settings.rag_top_k, db=db)
         if similar:
             sections.append("=== Relevant Health Context ===")
             sections.extend(similar)

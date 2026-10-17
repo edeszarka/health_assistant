@@ -1,0 +1,168 @@
+{
+  "_comment": "Retrieval eval set. Positives are labelled by metadata, not content: a hit is relevant when its source_type matches and, for lab results, its lab_results.test_name is in test_names. Negatives are off-topic questions that should retrieve nothing.",
+  "positives": [
+    {
+      "lang": "hu",
+      "query": "Milyen magas volt a koleszterinszintem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "total_cholesterol"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Mennyi volt a HDL koleszterinem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "hdl_cholesterol"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Mennyi az LDL értékem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "ldl_cholesterol"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Milyen a trigliceridszintem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "triglycerides"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Mennyi volt a vércukrom?",
+      "source_type": "lab_result",
+      "test_names": [
+        "glucose",
+        "glükóz"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Rendben van a hemoglobinom?",
+      "source_type": "lab_result",
+      "test_names": [
+        "hemoglobin"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Hány fehérvérsejtem volt?",
+      "source_type": "lab_result",
+      "test_names": [
+        "wbc"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Milyen a kreatininszintem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "creatinine"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Mennyi a húgysavszintem?",
+      "source_type": "lab_result",
+      "test_names": [
+        "uric_acid"
+      ]
+    },
+    {
+      "lang": "hu",
+      "query": "Milyen betegségek fordultak elő a családomban?",
+      "source_type": "family_history"
+    },
+    {
+      "lang": "en",
+      "query": "What was my total cholesterol?",
+      "source_type": "lab_result",
+      "test_names": [
+        "total_cholesterol"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What is my HDL cholesterol?",
+      "source_type": "lab_result",
+      "test_names": [
+        "hdl_cholesterol"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What was my LDL?",
+      "source_type": "lab_result",
+      "test_names": [
+        "ldl_cholesterol"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "How high are my triglycerides?",
+      "source_type": "lab_result",
+      "test_names": [
+        "triglycerides"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What was my blood glucose?",
+      "source_type": "lab_result",
+      "test_names": [
+        "glucose",
+        "glükóz"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "Is my hemoglobin normal?",
+      "source_type": "lab_result",
+      "test_names": [
+        "hemoglobin"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What was my white blood cell count?",
+      "source_type": "lab_result",
+      "test_names": [
+        "wbc"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What is my creatinine level?",
+      "source_type": "lab_result",
+      "test_names": [
+        "creatinine"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "What is my uric acid level?",
+      "source_type": "lab_result",
+      "test_names": [
+        "uric_acid"
+      ]
+    },
+    {
+      "lang": "en",
+      "query": "Which diseases run in my family?",
+      "source_type": "family_history"
+    }
+  ],
+  "negatives": [
+    "Milyen idő lesz holnap Budapesten?",
+    "Ajánlj egy jó receptet vacsorára.",
+    "Ki nyerte a tegnapi focimeccset?",
+    "What is the capital of Australia?",
+    "Recommend a good movie for tonight."
+  ]
+}
