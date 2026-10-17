@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from database.connection import get_db
 from config import settings
 from ingestion.pdf_parser import PDFParser
-from ingestion.samsung_parser import SamsungHealthParser
+from ingestion.samsung_parser import SamsungHealthParser, SamsungHealthReport
 from models.db_models import SamsungHealthMetric
 from services.lab_ingest import store_lab_results
 from services.rag_service import rag_service
@@ -77,42 +77,34 @@ async def upload_pdf(
 @router.post("/samsung")
 async def upload_samsung(
     files: List[UploadFile] = File(...),
-    # password: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Upload Samsung Health ZIP or multiple CSVs, extract metrics, store in DB.
+    """Upload one Samsung Health export ZIP, extract metrics, store in DB.
+
+    The ZIP is parsed in memory and never written to disk, so the
+    client-supplied filename cannot steer a write path (path traversal) and
+    the export, whose name carries the Samsung account name, is not retained.
 
     Args:
-        files: One ZIP file or multiple CSV files.
-        password: Password if encrypted (not usually for Samsung, but supported).
+        files: Exactly one Samsung Health export ZIP.
         db: Async DB session.
 
     Returns:
         Summary of extracted metrics.
     """
-    if not files:
-        raise HTTPException(status_code=400, detail="No files provided.")
-
-    upload_dir = Path(settings.upload_dir) / uuid.uuid4().hex
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    
-    is_zip = False
-    source_name = "samsung_upload"
-    for file in files:
-        if file.filename.lower().endswith(".zip"):
-            is_zip = True
-            source_name = file.filename
-        file_path = upload_dir / file.filename
-        file_path.write_bytes(await file.read())
+    if len(files) != 1 or not (files[0].filename or "").lower().endswith(".zip"):
+        raise HTTPException(
+            status_code=400, detail="Upload exactly one Samsung Health export ZIP."
+        )
+    original_filename = files[0].filename
+    # Persisted identifier; the original filename is returned to the caller only.
+    source_name = f"samsung_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}"
 
     try:
-        current_path = upload_dir / source_name if is_zip else upload_dir
-        # report = samsung_parser.parse(current_path, password=password)
-        report = samsung_parser.parse(current_path)
-        if not is_zip:
-            source_name = "multiple_csvs"
+        metrics = samsung_parser.parse_zip_bytes(await files[0].read())
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Samsung parsing failed: {exc}")
+    report = SamsungHealthReport(metrics=metrics)
 
     stored = 0
     for ds in report.daily_summaries():
@@ -164,4 +156,4 @@ async def upload_samsung(
         overall_summary = report.summary()
         await rag_service.store_embedding("samsung_summary", None, overall_summary, db)
 
-    return {"filename": source_name, "metrics_extracted": len(report.daily_summaries()), "stored": stored}
+    return {"filename": original_filename, "metrics_extracted": len(report.daily_summaries()), "stored": stored}

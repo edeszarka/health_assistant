@@ -65,19 +65,20 @@ with tab_samsung:
         "Export from Samsung Health app → Profile → Settings → Download personal data. "
         "Upload the resulting ZIP file. Supports steps, distance, calories, weight."
     )
-    samsung_files = st.file_uploader(
+    samsung_file = st.file_uploader(
         "Choose the Samsung Health ZIP file",
-        type=["zip", "csv"],
-        accept_multiple_files=True,
+        type=["zip"],
         key="samsung_upload",
     )
-    if samsung_files and st.button("Process Samsung Data", key="process_samsung"):
+    if samsung_file and st.button("Process Samsung Data", key="process_samsung"):
         with st.spinner("Parsing Samsung Health data…"):
             try:
                 # Use _mime() to ensure consistent MIME type — f.type is unreliable for ZIPs
                 httpx_files = [
-                    ("files", (f.name, f.getvalue(), _mime(f.name)))
-                    for f in samsung_files
+                    (
+                        "files",
+                        (samsung_file.name, samsung_file.getvalue(), _mime(samsung_file.name)),
+                    )
                 ]
                 resp = httpx.post(
                     f"{BACKEND}/upload/samsung",
