@@ -15,8 +15,8 @@ from database.connection import get_db
 from config import settings
 from ingestion.pdf_parser import PDFParser
 from ingestion.samsung_parser import SamsungHealthParser
-from models.db_models import LabResult, SamsungHealthMetric
-from services.embedding_text import lab_result_text
+from models.db_models import SamsungHealthMetric
+from services.lab_ingest import store_lab_results
 from services.rag_service import rag_service
 
 logger = logging.getLogger(__name__)
@@ -60,50 +60,7 @@ async def upload_pdf(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Lab extraction failed: {exc}")
 
-    stored = 0
-    for lab in report.results:
-        try:
-            normalised_name = lab.normalized_name
-            value = lab.value
-            
-            if value is None:
-                continue  # Skip if we can't parse the value
-
-            ref_low = lab.ref_range_low
-            ref_high = lab.ref_range_high
-            is_flagged = lab.is_flagged
-
-            test_date = None
-            if report.patient.sample_date:
-                test_date = report.patient.sample_date.date()
-
-            row = LabResult(
-                test_name=normalised_name,
-                raw_name=lab.raw_name,
-                value=value,
-                unit=lab.unit,
-                ref_range_low=ref_low,
-                ref_range_high=ref_high,
-                is_flagged=is_flagged,
-                test_date=test_date,
-                source_filename=upload_id,
-            )
-            db.add(row)
-            await db.flush()
-
-            # Embed
-            embed_text = lab_result_text(
-                lab.raw_name, normalised_name, value, lab.unit, is_flagged
-            )
-            await rag_service.store_embedding("lab_result", row.id, embed_text, db)
-            stored += 1
-        except Exception as exc:
-            # Log the test name and error type only: the exception text can
-            # include the lab value, and logs must not carry health data.
-            logger.warning(
-                "Failed to store lab result %s: %s", lab.normalized_name, type(exc).__name__
-            )
-            continue
+    stored = await store_lab_results(report, upload_id, db)
 
     await db.commit()
     logger.info(
