@@ -26,3 +26,8 @@ def test_lab_normalizer_categorized_mappings():
     assert norm.normalize("limfocita (abszolut)") == "lymphocytes_abs"
     assert norm.normalize("szérum na") == "sodium"
     assert norm.normalize("összkoleszterin") == "total_cholesterol"
+
+
+def test_lab_normalizer_eeszt_glucose_spelling():
+    """EESZT reports print "Glükóz"; it must map to the glucose key."""
+    assert LabNormalizer().normalize("Glükóz") == "glucose"

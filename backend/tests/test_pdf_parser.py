@@ -155,3 +155,42 @@ def test_missing_sample_date_reports_error(parser):
     errors: list[str] = []
     parser._parse_patient("no sample line here at all", errors)
     assert any("Sample date not found" in e for e in errors)
+
+
+# ── Header rows repeated after the results table (multi-page reports) ───────
+
+# Synthetic page-2 header block: on real multi-page reports the patient and
+# document header repeats after the results table has started, and its
+# "Label: 123" lines used to be stored as lab results.
+PAGE_2_HEADER = """
+Azonosító: 999999 (NNGYK)
+Cím: 1111 Budapest, Minta utca 1.
+Beutaló: 12345678
+Szervezeti egység Lakcím: 1111 Budapest, Minta utca 1.
+Kiss Péter (NEAK: 54321)
+Pecsétszám: 54321
+"""
+
+
+def test_repeated_header_block_adds_no_results(parser):
+    errors: list[str] = []
+    results = parser._parse_results(FORMAT_A_TEXT + PAGE_2_HEADER, errors)
+    assert {r.raw_name for r in results} == {"Fehérvérsejtszám", "Koleszterin", "HDL-koleszterin"}
+
+
+def test_dropped_header_rows_are_reported_by_count_only(parser):
+    errors: list[str] = []
+    parser._parse_results(FORMAT_A_TEXT + PAGE_2_HEADER, errors)
+    skipped = [e for e in errors if "header-like" in e]
+    assert skipped == [
+        "Skipped 6 header-like row(s) (patient or document details, not lab results)."
+    ]
+    assert not any("Kiss" in e or "Budapest" in e or "999999" in e for e in errors)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Kálium", "Nátrium", "Koleszterin", "Celluláris elemek", "Neutrofil granulocita %"],
+)
+def test_real_lab_names_are_not_treated_as_header(parser, name):
+    assert not parser._HEADER_NAME_RE.search(name)
