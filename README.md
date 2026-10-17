@@ -172,10 +172,11 @@ quality on domain-specific text at this dimension size.
 container) runs 20 Hungarian/English lab and family-history questions plus 5
 off-topic ones against the live store. Relevance is judged by metadata (source
 type and normalised test name), so no health values are printed. Measured
-2026-10-17 on 66 stored records: the configured operating point (top-1,
-similarity >= 0.62) reaches recall 80% (Hungarian 70%, English 90%) at 80%
-precision; 2 of 5 off-topic questions still retrieve one record. Retrieving
-more rows raises recall only to 85% while precision drops to 18-48%.
+2026-10-17 on 42 stored records (after removing parser header rows and
+duplicate uploads): the configured operating point (top-1, similarity >= 0.62)
+reaches recall 85% (Hungarian 70%, English 100%) at 85% precision, and none of
+the 5 off-topic questions retrieves a record. Retrieving more rows raises recall
+to at most 90% while precision drops to 32-50%.
 Embedded texts carry the report's own Hungarian test names and nomic's
 `search_document:`/`search_query:` prefixes; before these changes Hungarian
 recall was at most 40%. After changing the embedding model or the text
@@ -250,9 +251,10 @@ rows, comma/dot decimals, `magas`/`alacsony`/`*` flags, and open-ended ranges.
 Dictionary-based normalization covers known Hungarian/Latin names, but
 provider-specific abbreviations and further layout variants remain a known failure
 mode. Rows that cannot be parsed (qualitative or inequality-bounded results, e.g.
-eGFR reported as ">90") are silently skipped — today only document-level issues
-(missing or malformed sample date) are reported via the upload `warnings` list, not
-individual skipped rows. Production would require a human review step for parsed
+eGFR reported as ">90") are silently skipped — the upload `warnings` list reports
+document-level issues (missing or malformed sample date) and the number of dropped
+header-like rows (patient/document fields repeated on later pages), not individual
+skipped result rows. Production would require a human review step for parsed
 values.
 
 **No human-in-the-loop for parsed data**: Automated parsing of medical values without

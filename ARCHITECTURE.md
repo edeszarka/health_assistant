@@ -46,16 +46,26 @@ Ollama over HTTP (`backend/services/llm_service.py:172`,
    (`backend/routers/upload.py:46-56`).
 2. `PDFParser` extracts values with pdfplumber and regular expressions; lab
    names are normalised by `LabNormalizer` inside the parser
-   (`backend/ingestion/pdf_parser.py:203,417,464`). No LLM is involved.
-3. Each value is stored as a `LabResult` row and embedded as `lab_result`
-   (`backend/routers/upload.py:80-98`). Parse warnings are returned to the
-   caller (`backend/routers/upload.py:116`).
+   (`backend/ingestion/pdf_parser.py:214,450,497`). No LLM is involved.
+   Rows whose name is a patient/document header field (ID, address, referral,
+   a doctor's NEAK line…) are dropped, because multi-page reports repeat the
+   header after the results table; only their count is reported as a warning
+   (`backend/ingestion/pdf_parser.py:207,382`).
+3. Each value is stored as a `LabResult` row and embedded as `lab_result` by
+   `store_lab_results` (`backend/services/lab_ingest.py:25,41,44`, called at
+   `backend/routers/upload.py:63`). Parse warnings are returned to the caller
+   (`backend/routers/upload.py:73`).
+4. After a parser fix, `python -m scripts.reimport_labs` (dry run by default,
+   `--apply` to write) re-parses the stored PDFs through the same
+   `store_lab_results` path: the newest upload of each identical PDF is
+   replaced, older copies are removed, and for a missing PDF only header-like
+   rows are removed (`backend/scripts/reimport_labs.py`).
 
 ### Wearable upload — `POST /upload/samsung`
 Daily summaries are upserted into `samsung_health_metrics`, keyed on
-`(metric_type, recorded_at)` (`backend/routers/upload.py:120-208`). A Samsung
+`(metric_type, recorded_at)` (`backend/routers/upload.py:77-165`). A Samsung
 upload also stores one `samsung_summary` embedding
-(`backend/routers/upload.py:208`). Rows written by the former Zepp Life
+(`backend/routers/upload.py:165`). Rows written by the former Zepp Life
 import (metric types such as `resting_hr`, `sleep_total_min`, `avg_spo2`,
 `avg_stress`) remain in the table; the import itself has been removed.
 
@@ -84,10 +94,10 @@ embedding, so chat retrieval no longer returns it
    nearest `embeddings` rows by cosine distance are retrieved, with no
    source-type filter (`backend/services/rag_service.py:135,180`). Operating
    point: top `rag_top_k` = 1 row with similarity >= 0.62
-   (`backend/config.py:23-24`), chosen with the retrieval eval
-   (`python -m eval.retrieval_eval`): recall 80% (HU 70%, EN 90%) at 80%
-   precision on 20 HU/EN questions; 2 of 5 off-topic questions still retrieve
-   one row. Re-run the eval and `python -m scripts.reembed` after changing the
+   (`backend/config.py:24-25`), chosen with the retrieval eval
+   (`python -m eval.retrieval_eval`): recall 85% (HU 70%, EN 100%) at 85%
+   precision on 20 HU/EN questions, and none of 5 off-topic questions retrieves
+   a row (measured on 42 stored records after the lab re-import). Re-run the eval and `python -m scripts.reembed` after changing the
    model or the texts.
 5. Everything is formatted into the system prompt and sent to Ollama
    `/api/chat` (`backend/routers/chat.py:753`,
@@ -118,8 +128,8 @@ Reads lab results and the five latest `risk_scores` rows
   but `backend/database/migrations/versions/` holds no migrations.
 - **Vector store**: `embeddings.embedding` is `Vector(768)`
   (`backend/models/db_models.py:119`). Only three source types are written:
-  `lab_result` (`backend/routers/upload.py:98`), `samsung_summary`
-  (`backend/routers/upload.py:208`), `family_history`
+  `lab_result` (`backend/services/lab_ingest.py:41`), `samsung_summary`
+  (`backend/routers/upload.py:165`), `family_history`
   (`backend/routers/family_history.py:62`). Lab and family-history texts are
   one bilingual line per record built by `backend/services/embedding_text.py:15,44`
   (the report's own test name next to the normalised key); no chunking. No
