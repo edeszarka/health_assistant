@@ -34,7 +34,7 @@ Five Docker Compose services (`docker-compose.yml:3-76`):
 Models: chat model from `settings.ollama_model` (default `llama3.2:3b`) and
 embedding model `nomic-embed-text` (`backend/config.py:10-11`), both served by
 Ollama over HTTP (`backend/services/llm_service.py:172`,
-`backend/services/rag_service.py:34`).
+`backend/services/rag_service.py:44`).
 
 ---
 
@@ -43,12 +43,12 @@ Ollama over HTTP (`backend/services/llm_service.py:172`,
 ### Lab PDF upload — `POST /upload/pdf`
 1. The PDF is saved to `settings.upload_dir` under a generated
    `timestamp_uuid` name; the original filename is not persisted
-   (`backend/routers/upload.py:45-55`).
+   (`backend/routers/upload.py:46-56`).
 2. `PDFParser` extracts values with pdfplumber and regular expressions; lab
    names are normalised by `LabNormalizer` inside the parser
    (`backend/ingestion/pdf_parser.py:203,417,464`). No LLM is involved.
 3. Each value is stored as a `LabResult` row and embedded as `lab_result`
-   (`backend/routers/upload.py:79-98`). Parse warnings are returned to the
+   (`backend/routers/upload.py:80-98`). Parse warnings are returned to the
    caller (`backend/routers/upload.py:116`).
 
 ### Wearable upload — `POST /upload/samsung`
@@ -66,9 +66,9 @@ row is written to `risk_scores` (`backend/routers/blood_pressure.py:83-96`).
 ### Family history — `POST /family-history/`, `DELETE /family-history/{id}`
 The entry is stored and embedded as `family_history`; if an ICD-10 code was
 entered, that code is looked up on MedlinePlus Connect to warm the cache
-(`backend/routers/family_history.py:49-73`). Deleting an entry also deletes its
+(`backend/routers/family_history.py:50-71`). Deleting an entry also deletes its
 embedding, so chat retrieval no longer returns it
-(`backend/routers/family_history.py:98-104`).
+(`backend/routers/family_history.py:96-102`).
 
 ### Chat — `POST /chat/`
 1. Language detection and keyword intent detection
@@ -79,9 +79,16 @@ embedding, so chat retrieval no longer returns it
 3. Risk scores: baseline scores are computed and persisted by
    `compute_baseline_scores`; hypothetical ("what if") scores are computed in
    memory (`backend/routers/chat.py:535,542-670`).
-4. RAG: the message is embedded and the five nearest `embeddings` rows above
-   the similarity threshold are retrieved, with no source-type filter
-   (`backend/services/rag_service.py:167`, threshold `backend/config.py:17`).
+4. RAG: the message is embedded with nomic's `search_query: ` prefix (stored
+   texts use `search_document: `; `backend/services/rag_service.py:29`) and the
+   nearest `embeddings` rows by cosine distance are retrieved, with no
+   source-type filter (`backend/services/rag_service.py:135,180`). Operating
+   point: top `rag_top_k` = 1 row with similarity >= 0.62
+   (`backend/config.py:23-24`), chosen with the retrieval eval
+   (`python -m eval.retrieval_eval`): recall 80% (HU 70%, EN 90%) at 80%
+   precision on 20 HU/EN questions; 2 of 5 off-topic questions still retrieve
+   one row. Re-run the eval and `python -m scripts.reembed` after changing the
+   model or the texts.
 5. Everything is formatted into the system prompt and sent to Ollama
    `/api/chat` (`backend/routers/chat.py:753`,
    `backend/services/llm_service.py:172`). The response never cites sources
@@ -113,8 +120,10 @@ Reads lab results and the five latest `risk_scores` rows
   (`backend/models/db_models.py:119`). Only three source types are written:
   `lab_result` (`backend/routers/upload.py:98`), `samsung_summary`
   (`backend/routers/upload.py:208`), `family_history`
-  (`backend/routers/family_history.py:64`). No medical literature or guideline
-  text is embedded.
+  (`backend/routers/family_history.py:62`). Lab and family-history texts are
+  one bilingual line per record built by `backend/services/embedding_text.py:15,44`
+  (the report's own test name next to the normalised key); no chunking. No
+  medical literature or guideline text is embedded.
 - **Files**: uploaded PDFs are kept on disk in `settings.upload_dir`
   (`backend/config.py:13`), mounted from `./data/uploads` in Compose
   (`docker-compose.yml:68`).
@@ -125,7 +134,7 @@ Reads lab results and the five latest `risk_scores` rows
 
 | Call | From | What is sent | Evidence |
 |---|---|---|---|
-| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:172`, `backend/services/rag_service.py:34` |
+| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:172`, `backend/services/rag_service.py:44` |
 | MedlinePlus Web Service | backend | A topic search term | `backend/config.py:14`, `backend/services/medlineplus_service.py:100-104` |
 | MedlinePlus Connect | backend | An ICD-10 code | `backend/config.py:15`, `backend/services/medlineplus_service.py:136-144` |
 
@@ -179,7 +188,7 @@ before it is made (see [AGENTS.md](AGENTS.md)).
 4. **The backend's only external call is MedlinePlus; it receives condition
    or topic terms only:**
    - the ICD-10 code the user entered for a family-history entry; the
-     free-text condition is never sent (`backend/routers/family_history.py:67-69`);
+     free-text condition is never sent (`backend/routers/family_history.py:65-67`);
    - screening condition names from the hard-coded `SCREENING_RULES`
      (`backend/services/screening_service.py:42,178`). Which names are sent
      depends on the user's age, sex, family history and flagged labs, so the

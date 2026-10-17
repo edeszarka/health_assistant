@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     medlineplus_base_url: str = "https://wsearch.nlm.nih.gov/ws/query"
     medlineplus_connect_url: str = "https://connect.medlineplus.gov/application"
     medlineplus_cache_ttl_days: int = 7
-    rag_similarity_threshold: float = 0.75
+    # RAG operating point, chosen with `python -m eval.retrieval_eval` on 20 HU/EN
+    # questions + 5 off-topic ones (2026-10-17, nomic-embed-text with task
+    # prefixes): top-1 at >= 0.62 gave recall 80% (HU 70%, EN 90%) at 80%
+    # precision. More results raised recall to 85% but dropped precision to
+    # 40-48%, which distracts a small chat model. Re-run the eval after changing
+    # the embedding model, templates or data.
+    rag_similarity_threshold: float = 0.62
+    rag_top_k: int = 1
 
     class Config:
         env_file = ".env"

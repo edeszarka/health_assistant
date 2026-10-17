@@ -115,7 +115,7 @@ class RAGService:
             query: The user's question or search topic.
             limit: The maximum number of results to return. Defaults to 5.
             threshold: The minimum similarity score (1 - cosine distance).
-                Defaults to ``settings.rag_similarity_threshold`` (0.75).
+                Defaults to ``settings.rag_similarity_threshold``.
             db: The asynchronous SQLAlchemy database session.
             source_types: Optional allow-list of ``Embedding.source_type`` values.
                 When provided, only chunks whose source type is in the list are
@@ -177,7 +177,7 @@ class RAGService:
         sections: list[str] = []
 
         # 1. Semantic search for relevant matches
-        similar = await self.similarity_search(query, limit=5, db=db)
+        similar = await self.similarity_search(query, limit=settings.rag_top_k, db=db)
         if similar:
             sections.append("=== Relevant Health Context ===")
             sections.extend(similar)

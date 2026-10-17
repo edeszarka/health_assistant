@@ -168,14 +168,18 @@ entirely local. Selected over OpenAI text-embedding-3-small because no
 health data leaves the machine. Benchmarks show competitive retrieval 
 quality on domain-specific text at this dimension size.
 
-**RAG Evaluation**: Manually validated against 3 uploaded lab reports 
-(46, 38, and 51 results each). Retrieval precision tested by asking 
-10 questions per report and verifying the correct lab values appeared 
-in the LLM context before answering. Known failure mode: cosine 
-similarity threshold of 0.75 occasionally misses results with 
-domain-specific Hungarian terminology not well-represented in the 
-embedding space. A production system would use RAGAS or a similar 
-automated evaluation framework.
+**RAG Evaluation**: `python -m eval.retrieval_eval` (inside the backend
+container) runs 20 Hungarian/English lab and family-history questions plus 5
+off-topic ones against the live store. Relevance is judged by metadata (source
+type and normalised test name), so no health values are printed. Measured
+2026-10-17 on 66 stored records: the configured operating point (top-1,
+similarity >= 0.62) reaches recall 80% (Hungarian 70%, English 90%) at 80%
+precision; 2 of 5 off-topic questions still retrieve one record. Retrieving
+more rows raises recall only to 85% while precision drops to 18-48%.
+Embedded texts carry the report's own Hungarian test names and nomic's
+`search_document:`/`search_query:` prefixes; before these changes Hungarian
+recall was at most 40%. After changing the embedding model or the text
+templates, run `python -m scripts.reembed` and re-run the eval.
 
 **Hungarian/Latin → Standard normalization**: Single-stage, dictionary-only.
 A hardcoded lookup dictionary in `backend/ingestion/lab_normalizer.py`
