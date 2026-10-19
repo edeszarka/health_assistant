@@ -111,6 +111,18 @@ API docs available at: **http://localhost:8000/docs**
 3. The assistant uses your actual lab values, BP history, and family history
 4. All responses end with a reminder to consult your doctor
 
+### Calculate Your Risk Scores (FINDRISC, Framingham)
+1. In **💬 Chat**, ask for your risk, e.g. "Mekkora a cukorbetegség kockázatom?"
+   or "What is my cardiovascular risk?"
+2. The reply lists what is stored (value and date, or "no data"), without
+   calling the LLM, and a form opens below it, prefilled with the stored values
+3. Fill in the profile once (birth year and month, sex, height, the FINDRISC
+   and Framingham questions) and enter fresh weight, waist, blood pressure or
+   cholesterol (with its unit) if you have them
+4. **Save and calculate** stores the values and the scores; **Calculate with
+   stored data** uses what is already stored. "What if" questions ("Ha 80 kg
+   lennék…") are recalculated in memory and never saved
+
 ### View Recommendations
 1. Go to **📋 Recommendations**
 2. See a personalized checklist of health screenings based on your profile and data
@@ -288,7 +300,7 @@ women's table, no Framingham score is shown or saved for women (FINDRISC is
 unaffected).
 
 **Risk scores need a complete profile**: FINDRISC and Framingham run only when
-every input is stored (profile answers via `PUT /risk/inputs`, a weight and
+every input is stored (profile answers from the chat risk form, a weight and
 waist measurement, and for Framingham cholesterol, HDL and a systolic BP). A
 missing input skips the score instead of counting as 0 points, so a score may be
 unavailable instead of too low. Physical activity is the user's yes/no answer to
