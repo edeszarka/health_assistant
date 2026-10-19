@@ -187,11 +187,18 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 from three models that run on a CPU-only laptop (Ryzen 5 PRO 4650U, 16 GB RAM),
 English answers deciding (3 × 16 answers each):
 
-| Model | English pass rate | Answers with a number not in the prompt | Median / p90 reply |
-|---|---|---|---|
-| **qwen2.5:3b** | **92%** | 8% | **23 s / 43 s** |
-| llama3.2:3b | 92% | 4% | 20 s / 64 s |
-| qwen2.5:1.5b | 81% | 15% | 11 s / 21 s |
+| Model | English pass rate | Answers with a number not in the prompt | Median / p90 reply, cold¹ | Reading / writing speed |
+|---|---|---|---|---|
+| **qwen2.5:3b** | **92%** | 8% | 64 s / 73 s | 23 / 5.8 tokens/s |
+| llama3.2:3b | 92% | 4% | not measured | — |
+| qwen2.5:1.5b | 81% | 15% | 31 s / 42 s | 46 / 11 tokens/s |
+
+¹ With `--cold`, no prompt prefix is reused from Ollama's cache. The eval's
+fictional prompts are ~1100 tokens; real prompts with a full lab history are
+~2300–2600 tokens, so a cold lab question takes about **130–150 s** with
+`qwen2.5:3b` (measured live: 150 s) and about 65 s with `qwen2.5:1.5b`. Small
+prompts (e.g. a blood-pressure question) take ~30 s; a repeated question whose
+prompt is cached takes ~30 s.
 
 The two 3B models tie on pass rate. `qwen2.5:3b` was chosen because its
 failures were general reference ranges quoted from memory, while
@@ -232,7 +239,9 @@ for information. The checks are necessary, not sufficient: there is no LLM
 judge, so a wrong claim built from correct numbers passes (seen with
 `qwen2.5:1.5b`: "LDL 3.9 mmol/L is within the reference range of 0-3.0").
 Answers vary between runs at the chat's sampling settings, so compare models
-with `--repeat 3`.
+with `--repeat 3`. Use `--cold` for latency: without it, the shared
+fictional context is served from Ollama's prompt cache and the times are
+too low.
 
 **Hungarian/Latin → Standard normalization**: Single-stage, dictionary-only.
 A hardcoded lookup dictionary in `backend/ingestion/lab_normalizer.py`
@@ -316,8 +325,11 @@ values.
 verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
 Production health systems require a data-verification UI before persistence.
 
-**CPU-only LLM**: A reply takes about 23 s (median) and up to ~45 s (p90) with
-`qwen2.5:3b` on a CPU-only laptop, which is acceptable for personal use.
+**CPU-only LLM**: On a CPU-only laptop, `qwen2.5:3b` reads the prompt at about
+23 tokens/s and writes at about 6 tokens/s. A question with a small prompt
+takes ~30 s; a lab question with the full history (~2500-token prompt) takes
+130–150 s when the prompt is not cached. Reading the prompt dominates, so a
+shorter prompt is the main lever.
 Production deployment would require GPU inference or a hosted model endpoint.
 
 **Embedding staleness**: Embeddings are created at upload time and not updated if source

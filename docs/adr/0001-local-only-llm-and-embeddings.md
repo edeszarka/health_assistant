@@ -31,8 +31,10 @@ telemetry is off (#27), so nothing else leaves the host.
 
 ## Consequences
 
-- Answers are slow on CPU: with the default `qwen2.5:3b`, the answer eval
-  measured a median of 23 s and a p90 of 43 s per reply on 2026-10-19.
+- Answers are slow on CPU: with the default `qwen2.5:3b`, ~30 s for a small
+  prompt and 130–150 s for a lab question with a ~2500-token prompt that is
+  not cached (measured 2026-10-19; see the correction in
+  [0010](0010-chat-model-choice.md)).
 - Only small models are practical (3B parameters; see
   [0010](0010-chat-model-choice.md)), so answer quality, instruction
   following and Hungarian output are limited. The prompt therefore gets pre-computed numbers and

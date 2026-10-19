@@ -65,6 +65,26 @@ the run-to-run variation the eval showed.
   window it would be tight in the 7.8 GB Docker VM and several times slower
   on this CPU.
 
+## Correction (2026-10-19, after the live check)
+
+The latencies above are too low for real use. All eval cases share most of
+their fictional context, so Ollama served most of each prompt from its
+prompt cache, and the eval's prompts (~1100 tokens) are half the size of a
+real one with a full lab history (~2300–2600 tokens). Measured without the
+cache (`--cold`, English cases):
+
+| Model | Median / p90 reply | Reading / writing speed | Pass rate |
+|---|---|---|---|
+| qwen2.5:3b | 64 s / 73 s | 23 / 5.8 tokens/s | 94% |
+| qwen2.5:1.5b | 31 s / 42 s | 46 / 11 tokens/s | 69% |
+
+A live lab question with a ~2500-token prompt took 150 s with `qwen2.5:3b`
+(121 s reading the prompt, 27 s writing), above the 120 s target; a small
+prompt took 32 s, and the same question again (cached) 31 s. The decision
+stands for now, because reading the prompt dominates and the prompt can be
+made shorter and more cacheable. If that does not bring a lab question under
+120 s, this record is superseded.
+
 ## Consequences
 
 - One model name everywhere. A local `.env` that sets `OLLAMA_MODEL` still
