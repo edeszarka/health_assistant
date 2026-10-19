@@ -287,9 +287,13 @@ points-to-risk table. Until it is replaced with the published Wilson et al. 1998
 women's table, no Framingham score is shown or saved for women (FINDRISC is
 unaffected).
 
-**FINDRISC activity is assumed**: the calculator still assumes 30 minutes of
-daily physical activity instead of deriving it from the stored wearable step
-data, which can over- or under-state the diabetes risk score.
+**Risk scores need a complete profile**: FINDRISC and Framingham run only when
+every input is stored (profile answers via `PUT /risk/inputs`, a weight and
+waist measurement, and for Framingham cholesterol, HDL and a systolic BP). A
+missing input skips the score instead of counting as 0 points, so a score may be
+unavailable instead of too low. Physical activity is the user's yes/no answer to
+the FINDRISC question, not derived from wearable step data. Age comes from the
+birth year and month, so it can be up to one month early.
 
 ## Roadmap (Planned / Not yet implemented)
 
