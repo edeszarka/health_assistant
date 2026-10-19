@@ -104,13 +104,17 @@ API docs available at: **http://localhost:8000/docs**
 1. Go to **🧬 Family History**
 2. Select the relative, enter the condition and optional ICD-10 code
 3. Submit — the entry is embedded in the vector database for AI context
+4. With an ICD-10 code (e.g. `E11`), the entry shows the MedlinePlus summary
+   and link, and the chat uses that text for family-history questions; only
+   the code is sent to MedlinePlus, once, when you save the entry
 
 ### Chat with the AI
 1. Go to **💬 Chat**
 2. Ask anything in **Hungarian or English** — the AI responds in kind
 3. The assistant uses your actual lab values, BP history, and family history
-4. For lab questions it also gets MedlinePlus text on what the test measures;
-   the MedlinePlus pages used are listed under the answer as sources
+4. For lab and family-history questions it also gets MedlinePlus text (what a
+   test measures, what a condition is); the MedlinePlus pages used are listed
+   under the answer as sources
 5. All responses end with a reminder to consult your doctor
 
 To enable the MedlinePlus lab texts, fill the cache once (51 requests to NLM,

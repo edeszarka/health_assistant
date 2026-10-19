@@ -87,8 +87,20 @@ class FamilyHistoryCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class MedlinePlusInfo(BaseModel):
+    """A MedlinePlus summary and link for one code."""
+
+    title: str
+    summary: str
+    url: str
+
+
 class FamilyHistoryResponse(BaseModel):
-    """Family history entry returned by the API."""
+    """Family history entry returned by the API.
+
+    ``medlineplus`` is the cached MedlinePlus Connect text for the entry's
+    ICD-10 code, or ``None`` when there is no code or nothing is cached.
+    """
 
     model_config = {"from_attributes": True}
 
@@ -99,6 +111,7 @@ class FamilyHistoryResponse(BaseModel):
     age_of_onset: Optional[int]
     notes: Optional[str]
     created_at: datetime
+    medlineplus: Optional[MedlinePlusInfo] = None
 
 
 # ─── Chat ────────────────────────────────────────────────────────────────────

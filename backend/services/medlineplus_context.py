@@ -1,8 +1,10 @@
 """Pick MedlinePlus reference texts for a chat question, from the cache only.
 
 The chat never calls MedlinePlus: lab-test texts are prefetched for a fixed
-LOINC list by ``scripts.warm_medlineplus``, so answering a question sends
-nothing about the user off the host (ARCHITECTURE invariant 4).
+LOINC list by ``scripts.warm_medlineplus``, and a family-history condition is
+looked up once when the user saves it with an ICD-10 code. Answering a
+question therefore sends nothing about the user off the host (ARCHITECTURE
+invariant 4).
 """
 from __future__ import annotations
 
@@ -15,9 +17,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestion.lab_normalizer import LabNormalizer
-from models.db_models import LabResult
+from models.db_models import FamilyHistory, LabResult
 from services.lab_loinc import LAB_LOINC
 from services.medlineplus_service import (
+    ICD10_CM_SYSTEM,
     LOINC_SYSTEM,
     connect_cache_key,
     medlineplus_service,
@@ -36,6 +39,10 @@ _AMBIGUOUS_TERMS = frozenset({"we", "got"})
 # longer terms only need a word start, so Hungarian suffixes still match
 # ("koleszterinem").
 _WHOLE_WORD_MAX_LEN = 4
+
+# Cached summaries are cut at a fixed length, usually mid-sentence. A cut is
+# moved back to the last sentence end when one exists in the second half.
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 
 
 @dataclass(frozen=True)
@@ -98,8 +105,9 @@ async def _user_lab_keys(db: AsyncSession) -> tuple[set[str], list[str]]:
 def choose_keys(mentioned: list[str], user_keys: set[str], flagged: list[str]) -> list[str]:
     """Order candidate keys: mentioned first, then flagged; one per LOINC code.
 
-    Only keys the user has results for and that have a LOINC code count;
-    the list is capped at ``MAX_REFERENCES``.
+    Only keys the user has results for and that have a LOINC code count.
+    Several codes can share one MedlinePlus page, so the cap is applied
+    after pages are de-duplicated (``merge_references``).
     """
     chosen: list[str] = []
     codes: set[str] = set()
@@ -109,9 +117,43 @@ def choose_keys(mentioned: list[str], user_keys: set[str], flagged: list[str]) -
             continue
         chosen.append(key)
         codes.add(code)
-        if len(chosen) == MAX_REFERENCES:
-            break
     return chosen
+
+
+def trim_to_sentence(text: str) -> str:
+    """Cut a truncated summary back to its last complete sentence."""
+    ends = [m.end() for m in _SENTENCE_END.finditer(text)]
+    if ends and ends[-1] >= len(text) // 2:
+        return text[: ends[-1]]
+    return text
+
+
+def merge_references(*groups: list[Reference]) -> list[Reference]:
+    """Concatenate reference lists, one per page, capped at ``MAX_REFERENCES``."""
+    merged: list[Reference] = []
+    urls: set[str] = set()
+    for group in groups:
+        for ref in group:
+            if ref.url in urls:
+                continue
+            merged.append(ref)
+            urls.add(ref.url)
+            if len(merged) == MAX_REFERENCES:
+                return merged
+    return merged
+
+
+async def _cached_reference(cache_key: str, fallback_title: str, db: AsyncSession) -> Reference | None:
+    """Build a reference from the cache, or ``None`` when nothing usable is cached."""
+    cached = await medlineplus_service.get_cached(cache_key, db)
+    if not cached or not cached.get("url") or not cached.get("summary"):
+        logger.info("No cached MedlinePlus text for %s.", cache_key)
+        return None
+    return Reference(
+        cached.get("title") or fallback_title,
+        trim_to_sentence(cached["summary"]),
+        cached["url"],
+    )
 
 
 async def lab_references(message: str, db: AsyncSession) -> list[Reference]:
@@ -126,16 +168,40 @@ async def lab_references(message: str, db: AsyncSession) -> list[Reference]:
     """
     user_keys, flagged = await _user_lab_keys(db)
     references: list[Reference] = []
+    urls: set[str] = set()
     for key in choose_keys(mentioned_keys(message), user_keys, flagged):
         cache_key = connect_cache_key(LAB_LOINC[key], LOINC_SYSTEM)
-        cached = await medlineplus_service.get_cached(cache_key, db)
-        if not cached or not cached.get("url") or not cached.get("summary"):
-            logger.info("No cached MedlinePlus text for %s (%s).", key, cache_key)
+        ref = await _cached_reference(cache_key, key, db)
+        if ref is None or ref.url in urls:
             continue
-        references.append(
-            Reference(cached.get("title") or key, cached["summary"], cached["url"])
-        )
+        references.append(ref)
+        urls.add(ref.url)
+        if len(references) == MAX_REFERENCES:
+            break
     return references
+
+
+async def family_references(db: AsyncSession) -> list[Reference]:
+    """Return cached MedlinePlus texts for family-history ICD-10 codes.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        One reference per distinct page, newest entry first, capped at
+        ``MAX_REFERENCES``; entries without a code or cached text are skipped.
+    """
+    result = await db.execute(
+        select(FamilyHistory.icd10_code)
+        .where(FamilyHistory.icd10_code.isnot(None))
+        .order_by(FamilyHistory.created_at.desc())
+    )
+    references: list[Reference] = []
+    for (code,) in result.fetchall():
+        ref = await _cached_reference(connect_cache_key(code, ICD10_CM_SYSTEM), code, db)
+        if ref is not None:
+            references.append(ref)
+    return merge_references(references)
 
 
 def format_references(references: list[Reference]) -> str:
