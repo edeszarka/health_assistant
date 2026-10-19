@@ -1,7 +1,8 @@
 """Baseline Framingham and FINDRISC computation and persistence.
 
-Single owner of baseline risk-score computation so the chat and recommendation
-routers share one implementation. Hypothetical ("what if") recalculations are
+Single owner of baseline risk-score computation so the chat, recommendation
+and risk routers share one implementation. Inputs are read through
+``services.risk_inputs``. Hypothetical ("what if") recalculations are
 deliberately NOT handled here — they are not measurements and must never be
 persisted.
 """
@@ -16,22 +17,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestion.unit_converter import lab_unit_converter
-from models.db_models import (
-    BloodPressureReading,
-    LabResult,
-    RiskScore,
-    SamsungHealthMetric,
-    UserProfile,
-)
+from models.db_models import RiskScore, UserProfile
 from services.risk_engine import risk_engine
+from services.risk_inputs import (
+    LAB_KEYS,
+    WAIST_METRIC,
+    WEIGHT_METRIC,
+    latest_lab,
+    latest_metric,
+    latest_systolic,
+)
 
 logger = logging.getLogger(__name__)
 
-# chat.py has always assumed a fixed 30 minutes of daily activity because no
-# derivation from wearable step data exists yet.
-# TODO: derive physical_activity_mins_per_day from SamsungHealthMetric step
-# data instead of hard-coding this value.
-DEFAULT_PHYSICAL_ACTIVITY_MINS_PER_DAY = 30.0
+# FINDRISC asks a yes/no question ("at least 30 minutes of physical activity
+# daily?"), while risk_engine.calculate_findrisc takes minutes per day and adds
+# points below 21 (= 150 min/week). The profile stores the answer, mapped to
+# minutes here so the engine's threshold decides the points.
+ACTIVE_MINS_PER_DAY = 30.0
+INACTIVE_MINS_PER_DAY = 0.0
+
+# FINDRISC waist cut-offs exist only for these two values.
+FINDRISC_SEXES = frozenset({"male", "female"})
 
 _EMPTY_SCORES: dict[str, Any] = {
     "framingham_risk_percent": None,
@@ -41,81 +48,82 @@ _EMPTY_SCORES: dict[str, Any] = {
 }
 
 
-# ── Input fetching ───────────────────────────────────────────────────────────
+# ── Input helpers ────────────────────────────────────────────────────────────
 
-async def _latest_lab_row(
-    db: AsyncSession, primary: str, fallback: str
-) -> Optional[tuple[float, Optional[str]]]:
-    """Return ``(value, unit)`` for the latest primary test, else the fallback.
+def activity_minutes(profile: Any) -> float:
+    """Map the profile's yes/no activity answer to minutes per day."""
+    if getattr(profile, "physically_active", False):
+        return ACTIVE_MINS_PER_DAY
+    return INACTIVE_MINS_PER_DAY
+
+
+def bmi_from(weight_kg: Optional[float], height_cm: Optional[float]) -> Optional[float]:
+    """Return the BMI, or ``None`` when weight or height is unknown."""
+    if weight_kg is None or not height_cm:
+        return None
+    return weight_kg / ((height_cm / 100) ** 2)
+
+
+def findrisc_missing(
+    profile: Any, bmi: Optional[float], waist_cm: Optional[float]
+) -> list[str]:
+    """Return the FINDRISC inputs that are unknown.
+
+    FINDRISC adds points for BMI and waist circumference; scoring without them
+    would silently under-estimate the risk, so callers skip the score instead.
 
     Args:
-        db: Async database session.
-        primary: Preferred normalised test name.
-        fallback: Legacy test name used only when the primary has no rows.
+        profile: The user profile, or ``None``.
+        bmi: Body mass index, or ``None`` when weight or height is unknown.
+        waist_cm: Waist circumference, or ``None`` when unknown.
 
     Returns:
-        A ``(value, unit)`` tuple, or ``None`` when neither test is present.
+        The names of the missing inputs; empty when the score can be computed.
     """
-    for test_name in (primary, fallback):
-        result = await db.execute(
-            select(LabResult.value, LabResult.unit)
-            .where(LabResult.test_name == test_name)
-            .where(LabResult.test_date.isnot(None))
-            .order_by(LabResult.test_date.desc())
-            .limit(1)
-        )
-        row = result.fetchone()
-        if row is not None:
-            return float(row[0]), row[1]
-    return None
+    if profile is None:
+        return ["profile"]
+    missing: list[str] = []
+    if not getattr(profile, "age", None):
+        missing.append("age")
+    if getattr(profile, "sex", None) not in FINDRISC_SEXES:
+        missing.append("sex (male/female)")
+    if bmi is None:
+        missing.append("bmi (weight and height)")
+    if waist_cm is None:
+        missing.append("waist_cm")
+    return missing
 
 
-async def _converted_lab(
-    db: AsyncSession, canonical: str, primary: str, fallback: str
-) -> Optional[tuple[float, str]]:
-    """Fetch a lab value and convert it to mg/dL using the row's own unit.
+async def _converted_lab(db: AsyncSession, canonical: str) -> Optional[tuple[float, str]]:
+    """Fetch the latest lab value and convert it to mg/dL using its own unit.
 
     Args:
         db: Async database session.
-        canonical: Normalised test name used for the conversion factor.
-        primary: Preferred normalised test name.
-        fallback: Legacy test name used only when the primary has no rows.
+        canonical: Normalised test name; also the key of ``LAB_KEYS``.
 
     Returns:
         ``(value_mg_dl, source_unit)`` or ``None`` when the value cannot be
         fetched or its unit cannot be converted without guessing.
     """
-    row = await _latest_lab_row(db, primary, fallback)
+    row = await latest_lab(db, *LAB_KEYS[canonical])
     if row is None:
         return None
-    value, unit = row
-    converted = lab_unit_converter.to_mg_dl(canonical, value, unit)
+    converted = lab_unit_converter.to_mg_dl(canonical, row.value, row.unit)
     if converted is None:
         return None
-    return converted, (unit or "unknown")
+    return converted, (row.unit or "unknown")
+
+
+async def _latest_value(db: AsyncSession, metric_type: str) -> Optional[float]:
+    """Return the latest value of a measurement, or ``None``."""
+    measurement = await latest_metric(db, metric_type)
+    return measurement.value if measurement is not None else None
 
 
 async def _latest_systolic(db: AsyncSession) -> Optional[int]:
     """Return the most recent systolic reading in mmHg, or ``None``."""
-    result = await db.execute(
-        select(BloodPressureReading.systolic)
-        .order_by(BloodPressureReading.measured_at.desc())
-        .limit(1)
-    )
-    row = result.fetchone()
-    return int(row[0]) if row is not None else None
-
-
-async def _latest_weight_kg(db: AsyncSession) -> Optional[float]:
-    """Return the most recent weight measurement in kg, or ``None``."""
-    result = await db.execute(
-        select(SamsungHealthMetric.value)
-        .where(SamsungHealthMetric.metric_type == "weight_kg")
-        .order_by(SamsungHealthMetric.recorded_at.desc())
-        .limit(1)
-    )
-    row = result.fetchone()
-    return float(row[0]) if row is not None else None
+    measurement = await latest_systolic(db)
+    return int(measurement.value) if measurement is not None else None
 
 
 # ── Computation ──────────────────────────────────────────────────────────────
@@ -152,15 +160,18 @@ def _compute_framingham(
 
     tc_value, tc_unit = total_cholesterol
     hdl_value, hdl_unit = hdl_cholesterol
+    bp_treated = bool(getattr(profile, "bp_medication_current", False))
+    diabetes = bool(getattr(profile, "diabetes_diagnosed", False))
+    smoker = bool(getattr(profile, "smoking", False))
     result = risk_engine.calculate_framingham(
         age=profile.age,
         sex=profile.sex,
         total_cholesterol=tc_value,
         hdl_cholesterol=hdl_value,
         systolic_bp=systolic_bp,
-        bp_treated=bool(getattr(profile, "bp_medication", False)),
-        diabetes=bool(getattr(profile, "high_glucose_history", False)),
-        smoker=bool(getattr(profile, "smoking", False)),
+        bp_treated=bp_treated,
+        diabetes=diabetes,
+        smoker=smoker,
     )
     return {
         "score_type": "framingham",
@@ -174,55 +185,43 @@ def _compute_framingham(
             "hdl_cholesterol_mg_dl": round(hdl_value, 2),
             "hdl_cholesterol_source_unit": hdl_unit,
             "systolic_bp": systolic_bp,
-            "bp_treated": bool(getattr(profile, "bp_medication", False)),
-            "diabetes": bool(getattr(profile, "high_glucose_history", False)),
-            "smoker": bool(getattr(profile, "smoking", False)),
+            "bp_treated": bp_treated,
+            "diabetes": diabetes,
+            "smoker": smoker,
         },
     }
 
 
 def _compute_findrisc(
-    profile: UserProfile, weight_kg: Optional[float]
+    profile: UserProfile, weight_kg: Optional[float], waist_cm: Optional[float]
 ) -> Optional[dict[str, Any]]:
-    """Compute the FINDRISC payload, or ``None`` when no profile is available."""
-    if profile is None:
+    """Compute the FINDRISC payload, or ``None`` when an input is missing.
+
+    Missing inputs are logged at warning level; no defaults are substituted.
+    """
+    bmi = bmi_from(weight_kg, getattr(profile, "height_cm", None))
+    missing = findrisc_missing(profile, bmi, waist_cm)
+    if missing:
+        logger.warning("FINDRISC skipped: missing %s.", ", ".join(missing))
         return None
 
-    bmi = None
-    if weight_kg is not None and getattr(profile, "height_cm", None):
-        bmi = weight_kg / ((profile.height_cm / 100) ** 2)
-
-    family_history_diabetes = (
-        "first_degree" if getattr(profile, "family_diabetes", False) else "none"
-    )
-    result = risk_engine.calculate_findrisc(
-        age=profile.age,
-        sex=profile.sex,
-        waist_cm=getattr(profile, "waist_cm", None),
-        bmi=bmi,
-        physical_activity_mins_per_day=DEFAULT_PHYSICAL_ACTIVITY_MINS_PER_DAY,
-        vegetables_daily=bool(getattr(profile, "vegetables_daily", False)),
-        hypertension_medication=bool(getattr(profile, "bp_medication", False)),
-        high_glucose_history=bool(getattr(profile, "high_glucose_history", False)),
-        family_history_diabetes=family_history_diabetes,
-    )
+    inputs = {
+        "age": profile.age,
+        "sex": profile.sex,
+        "waist_cm": waist_cm,
+        "bmi": bmi,
+        "physical_activity_mins_per_day": activity_minutes(profile),
+        "vegetables_daily": bool(getattr(profile, "vegetables_daily", False)),
+        "hypertension_medication": bool(getattr(profile, "bp_medication_ever", False)),
+        "high_glucose_history": bool(getattr(profile, "high_glucose_history", False)),
+        "family_history_diabetes": getattr(profile, "family_diabetes", None) or "none",
+    }
+    result = risk_engine.calculate_findrisc(**inputs)
     return {
         "score_type": "findrisc",
         "score_value": float(result["score"]),
         "risk_category": result["risk_category"],
-        "inputs": {
-            "age": profile.age,
-            "sex": profile.sex,
-            "waist_cm": getattr(profile, "waist_cm", None),
-            "bmi": round(bmi, 2) if bmi is not None else None,
-            "physical_activity_mins_per_day": DEFAULT_PHYSICAL_ACTIVITY_MINS_PER_DAY,
-            "vegetables_daily": bool(getattr(profile, "vegetables_daily", False)),
-            "hypertension_medication": bool(getattr(profile, "bp_medication", False)),
-            "high_glucose_history": bool(
-                getattr(profile, "high_glucose_history", False)
-            ),
-            "family_history_diabetes": family_history_diabetes,
-        },
+        "inputs": {**inputs, "bmi": round(bmi, 2)},
     }
 
 
@@ -232,6 +231,7 @@ def _compute_baseline_scores(
     hdl_cholesterol: Optional[tuple[float, str]],
     systolic_bp: Optional[int],
     weight_kg: Optional[float],
+    waist_cm: Optional[float],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Compute all baseline scores without touching the database.
 
@@ -251,7 +251,7 @@ def _compute_baseline_scores(
         result["framingham_category"] = framingham["risk_category"]
         payloads.append(framingham)
 
-    findrisc = _compute_findrisc(profile, weight_kg)
+    findrisc = _compute_findrisc(profile, weight_kg, waist_cm)
     if findrisc is not None:
         result["findrisc_score"] = int(findrisc["score_value"])
         result["findrisc_category"] = findrisc["risk_category"]
@@ -325,17 +325,14 @@ async def compute_baseline_scores(
     if profile is None:
         return dict(_EMPTY_SCORES)
 
-    total_cholesterol = await _converted_lab(
-        db, "total_cholesterol", "total_cholesterol", "cholesterol"
-    )
-    hdl_cholesterol = await _converted_lab(
-        db, "hdl_cholesterol", "hdl_cholesterol", "hdl"
-    )
+    total_cholesterol = await _converted_lab(db, "total_cholesterol")
+    hdl_cholesterol = await _converted_lab(db, "hdl_cholesterol")
     systolic_bp = await _latest_systolic(db)
-    weight_kg = await _latest_weight_kg(db)
+    weight_kg = await _latest_value(db, WEIGHT_METRIC)
+    waist_cm = await _latest_value(db, WAIST_METRIC)
 
     result, payloads = _compute_baseline_scores(
-        profile, total_cholesterol, hdl_cholesterol, systolic_bp, weight_kg
+        profile, total_cholesterol, hdl_cholesterol, systolic_bp, weight_kg, waist_cm
     )
     await _persist_scores(db, payloads)
     return result

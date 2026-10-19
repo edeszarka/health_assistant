@@ -22,11 +22,14 @@ your response must be in {user_language} only.
 
 User Profile:
 - Age: {age}, Sex: {sex}
-- Height: {height} cm, Waist: {waist} cm
+- Height: {height} cm
 - Smoking: {smoking}
-- BP medication: {bp_medication}
+- BP medication: currently {bp_medication_current}, ever regularly {bp_medication_ever}
+- Diagnosed diabetes: {diabetes}
 - History of high glucose: {high_glucose}
 - Daily vegetables: {vegetables}
+- At least 30 minutes of physical activity daily: {active}
+- Diabetes in the family: {family_diabetes}
 
 Family History:
 <family_history>
@@ -137,11 +140,14 @@ class LLMService:
             age=getattr(profile, "age", "Unknown"),
             sex=getattr(profile, "sex", "Unknown"),
             height=getattr(profile, "height_cm", "Unknown"),
-            waist=getattr(profile, "waist_cm", "Unknown"),
-            smoking=getattr(profile, "smoking", False),
-            bp_medication=getattr(profile, "bp_medication", False),
-            high_glucose=getattr(profile, "high_glucose_history", False),
-            vegetables=getattr(profile, "vegetables_daily", False),
+            smoking=getattr(profile, "smoking", "Unknown"),
+            bp_medication_current=getattr(profile, "bp_medication_current", "Unknown"),
+            bp_medication_ever=getattr(profile, "bp_medication_ever", "Unknown"),
+            diabetes=getattr(profile, "diabetes_diagnosed", "Unknown"),
+            high_glucose=getattr(profile, "high_glucose_history", "Unknown"),
+            vegetables=getattr(profile, "vegetables_daily", "Unknown"),
+            active=getattr(profile, "physically_active", "Unknown"),
+            family_diabetes=getattr(profile, "family_diabetes", "Unknown"),
             family_history_summary=family_history_summary or "No family history recorded.",
             flagged_values=flagged_values or "No lab results on record.",
             bp_summary=bp_summary or "No blood pressure readings recorded.",
