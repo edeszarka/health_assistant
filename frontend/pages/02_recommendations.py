@@ -21,7 +21,10 @@ except Exception as e:
     st.stop()
 
 if not recs:
-    st.info("No recommendations at this time. Add your profile data to get started.")
+    st.info(
+        "No recommendations at this time. To add your profile, ask for your risk "
+        "in 💬 Chat (e.g. \"What is my diabetes risk?\") and fill in the form."
+    )
     st.stop()
 
 # Group by urgency
