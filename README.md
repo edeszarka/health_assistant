@@ -23,7 +23,7 @@
 │                                ▼                                    │
 │                       ┌────────────────┐      ┌────────────────┐   │
 │                       │  Ollama        │◀─────│  Ollama-Pull   │   │
-│                       │  llama3.2:3b   │      │  (Auto-setup)  │   │
+│                       │  qwen2.5:3b    │      │  (Auto-setup)  │   │
 │                       │  nomic-embed   │      └────────────────┘   │
 │                       │  :11434        │                           │
 │                       └────────────────┘                           │
@@ -73,7 +73,7 @@ cp .env.example .env
 # Edit .env and set a secure POSTGRES_PASSWORD
 
 # 3. Start everything
-# This will automatically pull the AI models (llama3.2:3b, nomic-embed-text)
+# This will automatically pull the AI models (qwen2.5:3b, nomic-embed-text)
 docker-compose up -d
 
 # 4. Open the app
@@ -172,7 +172,7 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 | Frontend | Streamlit, Pandas |
 | Database | PostgreSQL 16 + pgvector extension |
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
-| LLM | Ollama — llama3.2:3b |
+| LLM | Ollama — qwen2.5:3b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
 | Orchestration | None — direct Ollama REST calls via httpx |
 | Parsing | pdfplumber |
@@ -183,23 +183,33 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 ---
 
 ## AI Design and Evaluation
-**LLM — llama3.2:3b**: Selected for its exceptional balance of speed and reasoning
-on consumer-grade CPUs. At 3B parameters, it provides highly responsive 
-conversational performance (typically 15-40s per response on modern CPUs) 
-while maintaining the multilingual capability required for Hungarian/English 
-medical terminology. The `/no_think` prefix is used to prioritize immediate 
-answer generation over extended chain-of-thought reasoning.
+**LLM — qwen2.5:3b**: Chosen on 2026-10-19 with the answer evaluation below,
+from three models that run on a CPU-only laptop (Ryzen 5 PRO 4650U, 16 GB RAM),
+English answers deciding (3 × 16 answers each):
+
+| Model | English pass rate | Answers with a number not in the prompt | Median / p90 reply |
+|---|---|---|---|
+| **qwen2.5:3b** | **92%** | 8% | **23 s / 43 s** |
+| llama3.2:3b | 92% | 4% | 20 s / 64 s |
+| qwen2.5:1.5b | 81% | 15% | 11 s / 21 s |
+
+The two 3B models tie on pass rate. `qwen2.5:3b` was chosen because its
+failures were general reference ranges quoted from memory, while
+`llama3.2:3b` invented a value for the user and attributed unsourced ranges to
+MedlinePlus; see [ADR 0010](docs/adr/0010-chat-model-choice.md). Hungarian
+answers are weak with every candidate (pass rate 58% at best). The `/no_think`
+prefix asks the model to answer directly, without extended reasoning.
 
 **Embedding — nomic-embed-text**: 768-dimensional embeddings via Ollama, 
 entirely local. Selected over OpenAI text-embedding-3-small because no 
-health data leaves the machine. Benchmarks show competitive retrieval 
-quality on domain-specific text at this dimension size.
+health data leaves the machine. Its retrieval quality on this app's data is
+measured by the RAG evaluation below; no external benchmark is relied on.
 
 **RAG Evaluation**: `python -m eval.retrieval_eval` (inside the backend
 container) runs 20 Hungarian/English lab and family-history questions plus 5
 off-topic ones against the live store. Relevance is judged by metadata (source
 type and normalised test name), so no health values are printed. Measured
-2026-10-17 on 42 stored records (after removing parser header rows and
+2026-10-17 and re-run unchanged on 2026-10-19 on 42 stored records (after removing parser header rows and
 duplicate uploads): the configured operating point (top-1, similarity >= 0.62)
 reaches recall 85% (Hungarian 70%, English 100%) at 85% precision, and none of
 the 5 off-topic questions retrieves a record. Retrieving more rows raises recall
@@ -306,7 +316,8 @@ values.
 verification is a known risk. A decimal misread (5.5 vs 55 mmol/L) would affect risk scores.
 Production health systems require a data-verification UI before persistence.
 
-**CPU-only LLM**: Response times of 30–90 seconds are acceptable for personal use.
+**CPU-only LLM**: A reply takes about 23 s (median) and up to ~45 s (p90) with
+`qwen2.5:3b` on a CPU-only laptop, which is acceptable for personal use.
 Production deployment would require GPU inference or a hosted model endpoint.
 
 **Embedding staleness**: Embeddings are created at upload time and not updated if source
@@ -358,7 +369,8 @@ are marked in the chat reply, not in the form's captions.
 8192-token window with 512 tokens kept for the reply. Older turns are dropped
 for the model but still shown in the chat, without a notice. Token counts are
 estimated from characters (2.5 characters per token, measured on this app's
-prompts with qwen2.5:1.5b), so another model may need a new measurement. Error
+prompts with the Qwen2.5 tokenizer), so another model family may need a new
+measurement. Error
 messages shown in the chat are never sent back to the model.
 
 **MedlinePlus text is English and cached**: MedlinePlus offers English (and

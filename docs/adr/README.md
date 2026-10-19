@@ -24,7 +24,7 @@ Status values: **Proposed** (open, needs the owner's decision), **Accepted**,
 | [0007](0007-medlineplus-cache-only.md) | Use MedlinePlus in the chat from the cache only, prefetched for a fixed list | Accepted | 2026-10-19 |
 | [0008](0008-chat-history-budget.md) | Tag chat turns by source and fit the history to a token budget | Accepted | 2026-10-19 |
 | [0009](0009-retention-of-uploaded-pdfs.md) | Keep or delete uploaded lab PDFs after parsing | Proposed | 2026-10-19 |
-| [0010](0010-chat-model-choice.md) | Which chat model is the documented default | Proposed | 2026-10-19 |
+| [0010](0010-chat-model-choice.md) | Use qwen2.5:3b as the default chat model | Accepted | 2026-10-19 |
 | [0011](0011-unimported-stored-pdfs.md) | What to do with stored PDFs that were never imported | Proposed | 2026-10-19 |
 
 New records start from [template.md](template.md). Write one when a change
