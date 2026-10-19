@@ -2,18 +2,37 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from models.api_models import FamilyHistoryCreate
 from routers import family_history
-from routers.family_history import add_family_history, delete_family_history
+from models.db_models import FamilyHistory
+from routers.family_history import (
+    add_family_history,
+    delete_family_history,
+    list_family_history,
+)
+
+E11_INFO = {
+    "title": "Diabetes Type 2",
+    "summary": "Type 2 diabetes is a disease in which blood sugar is too high.",
+    "url": "https://medlineplus.gov/diabetestype2.html",
+}
 
 
 def _db() -> AsyncMock:
     db = AsyncMock()
     db.add = MagicMock()
+
+    async def refresh(entry):
+        # A real refresh loads the server-generated columns.
+        entry.id = 1
+        entry.created_at = datetime(2026, 10, 19, tzinfo=timezone.utc)
+
+    db.refresh.side_effect = refresh
     return db
 
 
@@ -40,12 +59,35 @@ async def test_icd10_code_is_looked_up_on_medlineplus():
     data = FamilyHistoryCreate(relation="mother", condition="diabetes", icd10_code="E11")
     with patch.object(family_history.rag_service, "store_embedding", AsyncMock()), \
          patch.object(family_history.medlineplus_service, "search_health_topic", AsyncMock()) as search, \
-         patch.object(family_history.medlineplus_service, "get_condition_info", AsyncMock()) as connect:
-        await add_family_history(data=data, db=_db())
+         patch.object(family_history.medlineplus_service, "get_condition_info", AsyncMock(return_value=E11_INFO)) as connect:
+        response = await add_family_history(data=data, db=_db())
 
     connect.assert_awaited_once()
     assert connect.await_args.args[0] == "E11"
     search.assert_not_called()
+    assert response.medlineplus.url == E11_INFO["url"]
+
+
+@pytest.mark.asyncio
+async def test_list_returns_cached_medlineplus_info_without_network():
+    """Listing reads MedlinePlus from the cache only and attaches it per entry."""
+    with_code = FamilyHistory(id=1, relation="mother", condition="diabetes", icd10_code="E11",
+                              created_at=datetime(2026, 10, 19, tzinfo=timezone.utc))
+    without_code = FamilyHistory(id=2, relation="father", condition="asthma",
+                                 created_at=datetime(2026, 10, 19, tzinfo=timezone.utc))
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = [with_code, without_code]
+    db = _db()
+    db.execute = AsyncMock(return_value=rows)
+    with patch.object(family_history.medlineplus_service, "get_cached",
+                      AsyncMock(return_value=E11_INFO)) as cached,          patch.object(family_history.medlineplus_service, "get_condition_info", AsyncMock()) as fetch:
+        responses = await list_family_history(db=db)
+
+    fetch.assert_not_called()
+    cached.assert_awaited_once()
+    assert cached.await_args.args[0] == "icd10:E11"
+    assert responses[0].medlineplus.title == "Diabetes Type 2"
+    assert responses[1].medlineplus is None
 
 
 @pytest.mark.asyncio

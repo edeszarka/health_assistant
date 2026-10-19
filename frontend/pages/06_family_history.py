@@ -71,6 +71,11 @@ try:
                         st.write(f"**Age at onset:** {entry['age_of_onset']}")
                     if entry.get("notes"):
                         st.write(f"**Notes:** {entry['notes']}")
+                    info = entry.get("medlineplus")
+                    if info:
+                        st.markdown(f"**{info['title']}** (MedlinePlus)")
+                        st.write(info["summary"])
+                        st.link_button("MedlinePlus 🔗", info["url"])
                 with c2:
                     if st.button("🗑️ Delete", key=f"del_{entry['id']}"):
                         try:
