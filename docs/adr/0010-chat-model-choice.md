@@ -85,6 +85,13 @@ stands for now, because reading the prompt dominates and the prompt can be
 made shorter and more cacheable. If that does not bring a lab question under
 120 s, this record is superseded.
 
+Update (2026-10-19): with only the asked-about and flagged labs in the
+prompt ([0012](0012-lab-context-asked-and-flagged.md)), a cold lab question
+has a ~1100–1300-token prompt and took 73–81 s live (52–59 s reading). A
+long answer, or the first question after Ollama unloaded the model, still
+took 106–137 s. The owner keeps `qwen2.5:3b`: a slower answer is acceptable,
+a weaker model is not.
+
 ## Consequences
 
 - One model name everywhere. A local `.env` that sets `OLLAMA_MODEL` still

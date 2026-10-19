@@ -26,6 +26,7 @@ Status values: **Proposed** (open, needs the owner's decision), **Accepted**,
 | [0009](0009-retention-of-uploaded-pdfs.md) | Keep or delete uploaded lab PDFs after parsing | Proposed | 2026-10-19 |
 | [0010](0010-chat-model-choice.md) | Use qwen2.5:3b as the default chat model | Accepted | 2026-10-19 |
 | [0011](0011-unimported-stored-pdfs.md) | What to do with stored PDFs that were never imported | Proposed | 2026-10-19 |
+| [0012](0012-lab-context-asked-and-flagged.md) | Put only the asked-about and flagged lab results into the prompt | Accepted | 2026-10-19 |
 
 New records start from [template.md](template.md). Write one when a change
 chooses between real alternatives; small fixes do not need one.
