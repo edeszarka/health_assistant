@@ -1,9 +1,14 @@
 """LLM chat service via Ollama with bilingual (HU/EN) system prompt."""
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from config import settings
+from services.chat_history import estimate_tokens, fit_history
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +86,49 @@ Rules:
 # generation time acceptable; the long timeout covers slow CPU inference.
 _NUM_PREDICT = 512
 _REQUEST_TIMEOUT_S = 1000.0
+# Tokens kept free on top of the estimates, for the chat template's role
+# markers and the estimate's error.
+_SAFETY_MARGIN_TOKENS = 256
+
+
+def history_budget(system_content: str, message: str) -> int:
+    """Tokens left for the conversation history in the context window."""
+    used = estimate_tokens(system_content) + estimate_tokens(message)
+    return max(0, settings.llm_num_ctx - _NUM_PREDICT - _SAFETY_MARGIN_TOKENS - used)
+
+
+def build_messages(
+    system_content: str, conversation_history: list[dict], message: str
+) -> list[dict]:
+    """Assemble the chat messages, fitting the history into the window.
+
+    Older turns that do not fit are dropped here, deliberately and logged,
+    instead of being dropped silently by Ollama.
+    """
+    budget = history_budget(system_content, message)
+    history, dropped = fit_history(conversation_history, budget)
+    if dropped:
+        logger.info(
+            "Dropped %d oldest history turn(s) to fit the %d-token window.",
+            dropped, settings.llm_num_ctx,
+        )
+    return [
+        {"role": "system", "content": system_content},
+        *history,
+        {"role": "user", "content": message},
+    ]
+
+
+def warn_if_near_window(data: dict) -> None:
+    """Warn when the real prompt size shows the estimate was too low."""
+    prompt_tokens = data.get("prompt_eval_count")
+    limit = settings.llm_num_ctx - _NUM_PREDICT
+    if isinstance(prompt_tokens, int) and prompt_tokens > limit:
+        logger.warning(
+            "Prompt used %d tokens, more than the %d left for it in the %d-token "
+            "window; CHARS_PER_TOKEN may be too high for this model.",
+            prompt_tokens, limit, settings.llm_num_ctx,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -168,17 +216,13 @@ class LLMService:
             reference_context=reference_context or "(No external reference for this question.)",
         )
 
-        messages = [{"role": "system", "content": system_content}]
-        for entry in conversation_history:
-            messages.append(entry)
-        messages.append({"role": "user", "content": message})
-
         payload = {
             "model":   self._model,
-            "messages": messages,
+            "messages": build_messages(system_content, conversation_history, message),
             "stream":  False,
             "options": {
-                "num_predict": _NUM_PREDICT
+                "num_predict": _NUM_PREDICT,
+                "num_ctx": settings.llm_num_ctx,
             }
         }
         try:
@@ -189,6 +233,7 @@ class LLMService:
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                warn_if_near_window(data)
                 return data.get("message", {}).get("content", "").strip()
         except Exception as exc:
             raise RuntimeError(f"LLM request failed: {exc}") from exc

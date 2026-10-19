@@ -117,15 +117,23 @@ class FamilyHistoryResponse(BaseModel):
 # ─── Chat ────────────────────────────────────────────────────────────────────
 
 
+# Where an assistant turn came from: the LLM, the app without the LLM (e.g.
+# the stored-input list for a risk question), or a UI error message.
+TurnSource = Literal["llm", "automatic", "error"]
+
+
 class ChatTurn(BaseModel):
     """One earlier turn of the conversation.
 
     Only user and assistant turns are accepted, so a client cannot inject a
     system message that would override the server-side system prompt.
+    ``source`` tells the backend which assistant turns the model did not write
+    (see ``services.chat_history``); it defaults to ``"llm"``.
     """
 
     role: Literal["user", "assistant"]
     content: str
+    source: TurnSource = "llm"
 
 
 class ChatRequest(BaseModel):
@@ -146,6 +154,7 @@ class ChatResponse(BaseModel):
     reply: str
     sources: List[str] = []
     language: str = "English"  # detected language of the user's message
+    source: Literal["llm", "automatic"] = "llm"  # who wrote ``reply``
     data_request: Optional[RiskInputsStatus] = None
 
 
