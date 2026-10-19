@@ -5,6 +5,7 @@ Run inside the backend container (needs Ollama, not the database):
     python -m eval.answer_eval --model qwen2.5:3b --repeat 3
     python -m eval.answer_eval --model llama3.2:3b --repeat 3 --json /tmp/llama.json
     python -m eval.answer_eval --model qwen2.5:3b --case ldl_lookup   # one case
+    python -m eval.answer_eval --model qwen2.5:3b --lang en --cold    # worst-case latency
     python -m eval.answer_eval --rescore /tmp/llama.json --json /tmp/llama2.json  # after a scorer fix
 
 Answers vary between runs (the chat's default sampling is used on purpose),
@@ -24,6 +25,7 @@ import argparse
 import asyncio
 import json
 import statistics
+import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,6 +65,9 @@ class CaseResult:
     seconds: Optional[float] = None
     completion_tokens: Optional[int] = None
     reply: str = ""  # fictional-data answer, kept for reviewing failures
+    prompt_tokens: Optional[int] = None
+    prompt_seconds: Optional[float] = None
+    completion_seconds: Optional[float] = None
 
 
 def load_cases(path: Path = CASES_PATH) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -101,6 +106,9 @@ def score_case(case: dict[str, Any], context: dict[str, Any], result: ChatResult
         seconds=result.total_seconds,
         completion_tokens=result.completion_tokens,
         reply=answer,
+        prompt_tokens=result.prompt_tokens,
+        prompt_seconds=result.prompt_seconds,
+        completion_seconds=result.completion_seconds,
     )
     scored.passed = not (scored.missing or scored.forbidden or scored.invented) and (
         scored.language_ok and scored.not_available_ok
@@ -108,8 +116,26 @@ def score_case(case: dict[str, Any], context: dict[str, Any], result: ChatResult
     return scored
 
 
-async def run_case(service: LLMService, base: dict[str, Any], case: dict[str, Any]) -> CaseResult:
-    """Ask the model one case and score the answer."""
+def cold_prefix() -> str:
+    """A unique first line, so Ollama cannot reuse a cached prompt prefix.
+
+    All cases share most of their context, so without it the system prompt is
+    mostly served from Ollama's prompt cache and the latency is optimistic.
+    """
+    return f"[eval run {uuid.uuid4().hex}]\n"
+
+
+async def run_case(
+    service: LLMService, base: dict[str, Any], case: dict[str, Any], cold: bool = False
+) -> CaseResult:
+    """Ask the model one case and score the answer.
+
+    Args:
+        service: The LLM client for the model under test.
+        base: Shared fictional context.
+        case: The case to run.
+        cold: Defeat Ollama's prompt cache, measuring worst-case latency.
+    """
     context = case_context(base, case)
     result = await service.chat_with_stats(
         message=case["question"],
@@ -123,6 +149,7 @@ async def run_case(service: LLMService, base: dict[str, Any], case: dict[str, An
         bp_summary=context.get("bp_summary", ""),
         family_history_summary=context.get("family_history_summary", ""),
         reference_context=context.get("reference_context", ""),
+        system_prefix=cold_prefix() if cold else "",
     )
     return score_case(case, context, result)
 
@@ -161,6 +188,21 @@ def summarize(results: list[CaseResult], lang: str) -> dict[str, Any]:
         "disclaimer": _rate(subset, "disclaimer"),
         "median_seconds": statistics.median(seconds) if seconds else None,
         "p90_seconds": seconds[int(0.9 * (len(seconds) - 1))] if seconds else None,
+        **_speed(subset),
+    }
+
+
+def _speed(results: list[CaseResult]) -> dict[str, Any]:
+    """Median prompt size and reading/generation speed, where Ollama reported them."""
+    prompts = [r.prompt_tokens for r in results if r.prompt_tokens]
+    reading = [r.prompt_tokens / r.prompt_seconds for r in results
+               if r.prompt_tokens and r.prompt_seconds]
+    writing = [r.completion_tokens / r.completion_seconds for r in results
+               if r.completion_tokens and r.completion_seconds]
+    return {
+        "median_prompt_tokens": statistics.median(prompts) if prompts else None,
+        "prompt_tokens_per_s": statistics.median(reading) if reading else None,
+        "completion_tokens_per_s": statistics.median(writing) if writing else None,
     }
 
 
@@ -183,6 +225,7 @@ def _print(model: str, results: list[CaseResult]) -> None:
 async def main(
     model: Optional[str], repeat: int, json_path: Optional[str],
     only: Optional[list[str]] = None, rescore_path: Optional[str] = None,
+    lang: Optional[str] = None, cold: bool = False,
 ) -> None:
     base, cases = load_cases()
     if rescore_path:
@@ -192,8 +235,12 @@ async def main(
     else:
         if only:
             cases = [case for case in cases if case["id"] in only]
+        if lang:
+            cases = [case for case in cases if case["lang"] == lang]
         service = LLMService(model=model)
-        results = [await run_case(service, base, case) for _ in range(repeat) for case in cases]
+        results = [
+            await run_case(service, base, case, cold) for _ in range(repeat) for case in cases
+        ]
     _print(str(model), results)
     if json_path:
         Path(json_path).write_text(
@@ -212,7 +259,11 @@ if __name__ == "__main__":
     cli.add_argument("--case", action="append", dest="only", help="run only this case id (repeatable)")
     cli.add_argument("--rescore", dest="rescore_path",
                      help="re-score the answers in a saved --json file; no model call")
+    cli.add_argument("--lang", choices=("en", "hu"), help="run only cases in this language")
+    cli.add_argument("--cold", action="store_true",
+                     help="defeat Ollama's prompt cache to measure worst-case latency")
     args = cli.parse_args()
     if not (args.model or args.rescore_path):
         cli.error("--model or --rescore is required")
-    asyncio.run(main(args.model, args.repeat, args.json_path, args.only, args.rescore_path))
+    asyncio.run(main(args.model, args.repeat, args.json_path, args.only,
+                     args.rescore_path, args.lang, args.cold))

@@ -145,16 +145,24 @@ class ChatResult:
     prompt_tokens: Optional[int]
     completion_tokens: Optional[int]
     total_seconds: Optional[float]
+    prompt_seconds: Optional[float] = None  # reading the prompt
+    completion_seconds: Optional[float] = None  # generating the reply
+
+
+def _seconds(nanoseconds: Any) -> Optional[float]:
+    """Convert one of Ollama's nanosecond durations to seconds."""
+    return nanoseconds / 1e9 if isinstance(nanoseconds, (int, float)) else None
 
 
 def _result(data: dict[str, Any]) -> ChatResult:
     """Build a ChatResult from Ollama's /api/chat response."""
-    total_ns = data.get("total_duration")
     return ChatResult(
         reply=data.get("message", {}).get("content", "").strip(),
         prompt_tokens=data.get("prompt_eval_count"),
         completion_tokens=data.get("eval_count"),
-        total_seconds=total_ns / 1e9 if isinstance(total_ns, (int, float)) else None,
+        total_seconds=_seconds(data.get("total_duration")),
+        prompt_seconds=_seconds(data.get("prompt_eval_duration")),
+        completion_seconds=_seconds(data.get("eval_duration")),
     )
 
 
@@ -195,6 +203,7 @@ class LLMService:
         bp_summary: str = "",
         family_history_summary: str = "",
         reference_context: str = "",
+        system_prefix: str = "",
     ) -> ChatResult:
         """Send a message to Ollama and return the reply with size and timing.
 
@@ -210,6 +219,9 @@ class LLMService:
             bp_summary: Blood pressure readings.
             family_history_summary: Family medical history entries.
             reference_context: MedlinePlus reference texts for the labs and family conditions discussed.
+            system_prefix: Text put before the system prompt. The chat never
+                sets it; the answer eval's cold mode passes a unique line so
+                Ollama cannot reuse a cached prompt prefix.
 
         Returns:
             The reply text with Ollama's prompt and completion token counts
@@ -227,7 +239,7 @@ class LLMService:
         findrisc_hypothetical_line   = f"- FINDRISC hypothetical: {findrisc_hypo}\n" if findrisc_hypo else ""
         framingham_hypothetical_line = f"- Framingham hypothetical: {framingham_hypo}\n" if framingham_hypo else ""
 
-        system_content = _BASE_PROMPT.format(
+        system_content = system_prefix + _BASE_PROMPT.format(
             user_language=user_language,
             age=getattr(profile, "age", "Unknown"),
             sex=getattr(profile, "sex", "Unknown"),
