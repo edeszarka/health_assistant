@@ -26,6 +26,7 @@ from services.llm_service import llm_service
 from services.risk_engine import risk_engine
 from services.risk_inputs import WAIST_METRIC, collect_inputs, latest_metric
 from services.risk_inputs_text import format_risk_inputs
+from services.medlineplus_context import Reference, format_references, lab_references
 from services.risk_score_service import (
     activity_minutes,
     compute_baseline_scores,
@@ -753,6 +754,15 @@ async def _risk_data_request(db: AsyncSession, user_language: str) -> ChatRespon
     )
 
 
+async def _lab_references(message: str, db: AsyncSession) -> list[Reference]:
+    """Return cached MedlinePlus texts for the message; none if reading fails."""
+    try:
+        return await lab_references(message, db)
+    except Exception as exc:
+        logger.warning("MedlinePlus reference lookup failed: %s", exc)
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Chat endpoint
 # ---------------------------------------------------------------------------
@@ -814,6 +824,12 @@ async def chat(
     if "labs" in intents:
         lab_summary = await _build_lab_trends_summary(db)
 
+    # MedlinePlus reference texts for the labs discussed — cache only, no
+    # network call (see services.medlineplus_context).
+    references: list[Reference] = []
+    if "labs" in intents:
+        references = await _lab_references(request.message, db)
+
     bp_summary = ""
     if "bp" in intents:
         bp_summary = await _build_bp_summary(db)
@@ -849,6 +865,7 @@ async def chat(
             flagged_values=lab_summary,
             bp_summary=bp_summary,
             family_history_summary=family_summary,
+            reference_context=format_references(references),
         )
     except Exception as exc:
         logger.error("LLM request failed: %s", exc)
@@ -857,4 +874,8 @@ async def chat(
             detail="The language model is unavailable. Please try again later.",
         )
 
-    return ChatResponse(reply=reply, sources=[], language=user_language)
+    return ChatResponse(
+        reply=reply,
+        sources=[ref.url for ref in references],
+        language=user_language,
+    )

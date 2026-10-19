@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     embed_dimensions: int = 768
     upload_dir: str = "./uploads"
     medlineplus_base_url: str = "https://wsearch.nlm.nih.gov/ws/query"
-    medlineplus_connect_url: str = "https://connect.medlineplus.gov/application"
+    # The Connect *web service* (XML/JSON). The ".../application" URL is the
+    # browser-facing web application, which answers with an HTML page.
+    medlineplus_connect_url: str = "https://connect.medlineplus.gov/service"
     medlineplus_cache_ttl_days: int = 7
     # RAG operating point, chosen with `python -m eval.retrieval_eval` on 20 HU/EN
     # questions + 5 off-topic ones (2026-10-17, nomic-embed-text with task

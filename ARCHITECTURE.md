@@ -30,11 +30,12 @@ Five Docker Compose services (`docker-compose.yml:3-76`):
 - **Services** (`backend/services/`): LLM client, RAG (embeddings + vector
   search), risk engine (Framingham, FINDRISC, AHA blood pressure), risk inputs
   (read, status, save), risk-score persistence, screening rules, MedlinePlus
-  client.
+  client and reference selection (`medlineplus_context`, LOINC map
+  `lab_loinc`).
 
 Models: chat model from `settings.ollama_model` (default `llama3.2:3b`) and
 embedding model `nomic-embed-text` (`backend/config.py:10-11`), both served by
-Ollama over HTTP (`backend/services/llm_service.py:178`,
+Ollama over HTTP (`backend/services/llm_service.py:187`,
 `backend/services/rag_service.py:44`).
 
 ---
@@ -90,18 +91,18 @@ embedding, so chat retrieval no longer returns it
    question; the no-keyword fallback does not count) is answered without the
    LLM: the reply lists the stored risk inputs with dates, or "no data", and
    `ChatResponse.data_request` carries the same status
-   (`backend/routers/chat.py:784`, `backend/services/risk_inputs_text.py`).
+   (`backend/routers/chat.py:794`, `backend/services/risk_inputs_text.py`).
    The chat page then shows an inline form, prefilled with the stored values,
    that saves through `PUT /risk/inputs` (and `POST /bp/`) and calculates
    through `POST /risk/calculate` (`frontend/risk_form.py`).
 1. Language detection and keyword intent detection
-   (`backend/routers/chat.py:780,788`).
+   (`backend/routers/chat.py:790,798`).
 2. SQL context builders run only for the detected intents: date-specific,
    wearable metrics, lab trends, blood pressure, family history, risk scores
-   (`backend/routers/chat.py:798-827`).
+   (`backend/routers/chat.py:808-843`).
 3. Risk scores: baseline scores are computed and persisted by
    `compute_baseline_scores`; hypothetical ("what if") scores are computed in
-   memory (`backend/routers/chat.py:581,588-722`).
+   memory (`backend/routers/chat.py:582,589-723`).
 4. RAG: the message is embedded with nomic's `search_query: ` prefix (stored
    texts use `search_document: `; `backend/services/rag_service.py:29`) and the
    nearest `embeddings` rows by cosine distance are retrieved, with no
@@ -112,10 +113,19 @@ embedding, so chat retrieval no longer returns it
    precision on 20 HU/EN questions, and none of 5 off-topic questions retrieves
    a row (measured on 42 stored records after the lab re-import). Re-run the eval and `python -m scripts.reembed` after changing the
    model or the texts.
-5. Everything is formatted into the system prompt and sent to Ollama
-   `/api/chat` (`backend/routers/chat.py:839`,
-   `backend/services/llm_service.py:178`). The response never cites sources
-   (`backend/routers/chat.py:860`).
+5. MedlinePlus references (labs intent only): up to `MAX_REFERENCES` = 3
+   lab-test texts, for labs the user has results for — first those named in
+   the message, then flagged ones — are read **from the cache only**, with no
+   network call (`backend/routers/chat.py:831`,
+   `backend/services/medlineplus_context.py`). They go into a separate
+   `<reference>` block labelled as general MedlinePlus text, not about the
+   user. The cache is filled by `python -m scripts.warm_medlineplus --apply`
+   for the fixed LOINC list in `backend/services/lab_loinc.py`; expired
+   entries are still used until the script is rerun.
+6. Everything is formatted into the system prompt and sent to Ollama
+   `/api/chat` (`backend/routers/chat.py:855`,
+   `backend/services/llm_service.py:187`). The response cites only the
+   MedlinePlus pages put into the prompt (`backend/routers/chat.py:877-881`).
 
 ### Recommendations — `GET /recommendations/`
 Baseline risk scores are computed and persisted, then hard-coded
@@ -182,15 +192,16 @@ Reads lab results and the five latest `risk_scores` rows
 
 | Call | From | What is sent | Evidence |
 |---|---|---|---|
-| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:172`, `backend/services/rag_service.py:44` |
-| MedlinePlus Web Service | backend | A topic search term | `backend/config.py:14`, `backend/services/medlineplus_service.py:100-104` |
-| MedlinePlus Connect | backend | An ICD-10 code | `backend/config.py:15`, `backend/services/medlineplus_service.py:136-144` |
+| Ollama (local container) | backend | Prompts and texts to embed; stays on the host | `backend/services/llm_service.py:187`, `backend/services/rag_service.py:44` |
+| MedlinePlus Web Service | backend | A topic search term | `backend/config.py:14`, `backend/services/medlineplus_service.py:135-139` |
+| MedlinePlus Connect (web service) | backend | An ICD-10 code; the fixed LOINC list (warm-up script only) | `backend/config.py:17`, `backend/services/medlineplus_service.py:189-196` |
 
 Streamlit usage statistics from the frontend are disabled
 (`frontend/.streamlit/config.toml:7`).
 
 MedlinePlus calls are rate-limited and cached for `medlineplus_cache_ttl_days`
-(`backend/services/medlineplus_service.py:22-66,221-280`).
+(`backend/services/medlineplus_service.py:56-101,294-353`). The chat never
+calls MedlinePlus; it reads the cache only.
 
 ---
 
@@ -207,31 +218,33 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    returns `None` with a warning (`backend/ingestion/unit_converter.py:50-70`).
    Missing inputs skip the score with no defaults substituted
    (`backend/services/risk_score_service.py:97-113,141-154`); the hypothetical
-   fallback uses the same converter (`backend/routers/chat.py:544-549`).
+   fallback uses the same converter (`backend/routers/chat.py:545-550`).
    FINDRISC is likewise skipped without age, male/female sex, BMI (weight
    and height) or waist circumference, instead of scoring them as 0 points
    (`backend/services/risk_score_service.py:67-94,195-206`); a "what if"
-   question names the missing input (`backend/routers/chat.py:614-624`).
+   question names the missing input (`backend/routers/chat.py:615-625`).
    Exception: cholesterol values typed into a "what if" question carry no unit
-   and are read as mg/dL (`backend/routers/chat.py:647-656`); values in the
+   and are read as mg/dL (`backend/routers/chat.py:648-657`); values in the
    mmol/L range are rejected by the plausibility guard
    (`backend/services/risk_engine.py:171-182`), the error is logged and no
-   hypothetical score is shown (`backend/routers/chat.py:720-721`).
+   hypothetical score is shown (`backend/routers/chat.py:721-722`).
 
 2. **Hypothetical ("what if") recalculations are never persisted.**
    The hypothetical branch only reads from the database
-   (`backend/routers/chat.py:535,554,564,617`) and returns its results in memory
-   (`backend/routers/chat.py:588-722`); only baseline scores are persisted, via
-   `compute_baseline_scores` (`backend/routers/chat.py:581`,
+   (`backend/routers/chat.py:536,555,565,618`) and returns its results in memory
+   (`backend/routers/chat.py:589-723`); only baseline scores are persisted, via
+   `compute_baseline_scores` (`backend/routers/chat.py:582`,
    `backend/services/risk_score_service.py:311-338`). Locked by
    `test_hypothetical_scores_are_never_persisted`
    (`backend/tests/test_chat_hypothetical.py`).
 
 3. **Retrieved data is wrapped in tagged blocks and the prompt instructs the
    model never to treat it as instructions.**
-   Tags: `backend/services/llm_service.py:35-61`; rule:
-   `backend/services/llm_service.py:64`; template tests:
-   `backend/tests/test_llm_service.py`. Whether the model obeys cannot be
+   Tags: `backend/services/llm_service.py:35-66` (the user's data blocks and
+   the MedlinePlus `<reference>` block); rules:
+   `backend/services/llm_service.py:69-70`; template tests:
+   `backend/tests/test_llm_service.py`,
+   `backend/tests/test_medlineplus_references.py`. Whether the model obeys cannot be
    enforced in code. Client-supplied conversation history accepts only `user`
    and `assistant` turns, so no client can inject a system message
    (`backend/models/api_models.py:107-122`; tests:
@@ -244,15 +257,20 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    - screening condition names from the hard-coded `SCREENING_RULES`
      (`backend/services/screening_service.py:42,178`). Which names are sent
      depends on the user's age, sex, family history and flagged labs, so the
-     set of queries indirectly reflects that profile.
+     set of queries indirectly reflects that profile;
+   - the fixed LOINC list (`backend/services/lab_loinc.py`), sent in full by
+     `scripts/warm_medlineplus.py` regardless of the user's results, so it
+     reflects nothing about the user. Chat questions trigger no MedlinePlus
+     request (`backend/services/medlineplus_context.py`).
 
 5. **The user's own records are never presented as an external source.**
    The prompt labels retrieved context as "semantic search over stored health
    records" from "the user's own records"
-   (`backend/services/llm_service.py:58,64`); chat responses cite no sources
-   (`backend/routers/chat.py:860`). When retrieval fails, the context only
+   (`backend/services/llm_service.py:58,69`); chat responses cite only the
+   external MedlinePlus pages whose text was put into the prompt, never the
+   user's records (`backend/routers/chat.py:877-881`). When retrieval fails, the context only
    says "(Context retrieval unavailable.)" and the error goes to the log
-   (`backend/routers/chat.py:832-835`).
+   (`backend/routers/chat.py:848-851`).
 
 6. **No usage telemetry leaves the host.**
    Streamlit's `browser.gatherUsageStats` defaults to `true`; it is set to
@@ -272,16 +290,16 @@ before it is made (see [AGENTS.md](AGENTS.md)).
    (`backend/services/risk_engine.py:122-136`); otherwise no baseline score is
    computed or saved (`backend/services/risk_score_service.py:155-159`) and a
    "what if" question gets an explicit "Not available" instead of a number
-   (`backend/routers/chat.py:663-668`).
+   (`backend/routers/chat.py:664-669`).
 
 ### (b) Targets — NOT yet implemented
 
 - **Target:** if requested data does not exist, the assistant says so instead
   of answering. Today only default placeholder strings are passed
-  (`backend/services/llm_service.py:151-152`); nothing prevents an answer.
+  (`backend/services/llm_service.py:159-160`); nothing prevents an answer.
 - **Target:** the LLM runs only when needed. Today every chat message calls the
-  LLM (`backend/routers/chat.py:839`), except an explicit risk question
-  (`backend/routers/chat.py:784`).
-- **Target:** MedlinePlus content is used in chat answers. Today MedlinePlus
-  results are only displayed on the recommendations page and never reach the
-  prompt.
+  LLM (`backend/routers/chat.py:855`), except an explicit risk question
+  (`backend/routers/chat.py:794`).
+- **Target:** MedlinePlus content is used in chat answers. Partly met: lab-test
+  texts reach the prompt (Chat step 5); family-history condition texts and
+  screening summaries do not yet.

@@ -6,6 +6,7 @@ import asyncio
 import json
 import defusedxml.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from typing import Optional
 
 import httpx
@@ -17,6 +18,39 @@ from models.db_models import MedlinePlusCache
 import logging
 
 logger = logging.getLogger(__name__)
+
+# MedlinePlus Connect code systems (mainSearchCriteria.v.cs), from
+# https://medlineplus.gov/medlineplus-connect/web-service/
+ICD10_CM_SYSTEM = "2.16.840.1.113883.6.90"
+LOINC_SYSTEM = "2.16.840.1.113883.6.1"
+# Cache-key prefix per code system.
+_CODE_PREFIX = {ICD10_CM_SYSTEM: "icd10", LOINC_SYSTEM: "loinc"}
+
+# Summaries are capped so a few references fit a small chat model's prompt.
+SUMMARY_MAX_CHARS = 500
+
+
+class _TextExtractor(HTMLParser):
+    """Collect the text content of an HTML fragment."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def html_to_text(fragment: str) -> str:
+    """Return the text of an HTML fragment with whitespace collapsed.
+
+    MedlinePlus Connect summaries are HTML; the markup must not reach the
+    prompt or the UI.
+    """
+    extractor = _TextExtractor()
+    extractor.feed(fragment)
+    extractor.close()
+    return " ".join("".join(extractor.parts).split())
 
 
 class _TokenBucket:
@@ -126,10 +160,28 @@ class MedlinePlusService:
         Returns:
             Dict with title, summary, url.
         """
-        cache_key = f"icd10:{icd10_code.upper().strip()}"
-        cached = await self._get_cache(cache_key, db)
-        if cached:
-            return cached
+        return await self.get_connect_info(icd10_code, ICD10_CM_SYSTEM, db)
+
+    async def get_connect_info(
+        self, code: str, code_system: str, db: AsyncSession, refresh: bool = False
+    ) -> dict:
+        """Fetch MedlinePlus Connect info for a code, using the cache first.
+
+        Args:
+            code: The code, e.g. ICD-10-CM "E11" or LOINC "2345-7".
+            code_system: ``ICD10_CM_SYSTEM`` or ``LOINC_SYSTEM``.
+            db: Async DB session.
+            refresh: Fetch even when a valid cache entry exists.
+
+        Returns:
+            Dict with title, summary, url. A failed request is not cached and
+            returns ``url=None``.
+        """
+        cache_key = connect_cache_key(code, code_system)
+        if not refresh:
+            cached = await self._get_cache(cache_key, db)
+            if cached:
+                return cached
 
         await _bucket.acquire()
         try:
@@ -137,19 +189,39 @@ class MedlinePlusService:
                 resp = await client.get(
                     self._connect_url,
                     params={
-                        "mainSearchCriteria.v.c": icd10_code,
-                        "mainSearchCriteria.v.cs": "2.16.840.1.113883.6.90",
+                        "mainSearchCriteria.v.c": code,
+                        "mainSearchCriteria.v.cs": code_system,
                         "knowledgeResponseType": "application/json",
                     },
                 )
                 resp.raise_for_status()
                 result = self._parse_connect_json(resp.json())
         except Exception as exc:
-            logger.error(f"MedlinePlus Connect failed for '{icd10_code}': {exc}")
-            return {"title": icd10_code, "summary": str(exc), "url": None}
+            logger.error("MedlinePlus Connect failed for '%s': %s", code, exc)
+            return {"title": code, "summary": "", "url": None}
 
-        await self._set_cache(cache_key, icd10_code, result, db)
+        await self._set_cache(cache_key, code, result, db)
         return result
+
+    async def get_cached(
+        self, cache_key: str, db: AsyncSession, allow_expired: bool = True
+    ) -> Optional[dict]:
+        """Read a cached response without any network call.
+
+        Used by the chat and the UI, so that showing reference text never
+        sends a request. Expired entries are returned by default: general
+        reference text stays useful, and ``scripts.warm_medlineplus``
+        refreshes it.
+
+        Args:
+            cache_key: e.g. ``"loinc:2345-7"``.
+            db: Async DB session.
+            allow_expired: Return an expired entry instead of ``None``.
+
+        Returns:
+            The cached dict, or ``None`` when absent (or expired and not allowed).
+        """
+        return await self._get_cache(cache_key, db, allow_expired=allow_expired)
 
     # ── Parsing helpers ──────────────────────────────────────────────────────
 
@@ -208,7 +280,8 @@ class MedlinePlusService:
             entries = feed.get("entry", [{}])
             entry = entries[0] if entries else {}
             title = entry.get("title", {}).get("_value", "")
-            summary = entry.get("summary", {}).get("_value", "")[:500]
+            raw_summary = entry.get("summary", {}).get("_value", "")
+            summary = html_to_text(raw_summary)[:SUMMARY_MAX_CHARS]
             links = entry.get("link", [{}])
             url = links[0].get("href", "") if links else ""
             return {"title": title, "summary": summary, "url": url}
@@ -218,12 +291,15 @@ class MedlinePlusService:
 
     # ── Cache helpers ────────────────────────────────────────────────────────
 
-    async def _get_cache(self, cache_key: str, db: AsyncSession) -> Optional[dict]:
+    async def _get_cache(
+        self, cache_key: str, db: AsyncSession, allow_expired: bool = False
+    ) -> Optional[dict]:
         """Return cached result if not expired, else None.
-        
+
         Args:
             cache_key: Unique identifier for the search.
             db: Async DB session.
+            allow_expired: Also return an expired entry.
         """
         try:
             stmt = select(MedlinePlusCache).where(
@@ -231,7 +307,7 @@ class MedlinePlusService:
             )
             result = await db.execute(stmt)
             row = result.scalar_one_or_none()
-            if row and row.expires_at > datetime.now(timezone.utc):
+            if row and (allow_expired or row.expires_at > datetime.now(timezone.utc)):
                 return json.loads(row.response_json)
         except Exception as exc:
             logger.warning(f"MedlinePlus cache read failed: {exc}")
@@ -275,6 +351,11 @@ class MedlinePlusService:
             logger.warning(f"MedlinePlus cache write failed: {exc}")
             return
         await db.commit()
+
+
+def connect_cache_key(code: str, code_system: str) -> str:
+    """Return the cache key for a MedlinePlus Connect code."""
+    return f"{_CODE_PREFIX[code_system]}:{code.upper().strip()}"
 
 
 medlineplus_service = MedlinePlusService()
