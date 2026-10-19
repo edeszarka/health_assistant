@@ -109,7 +109,18 @@ API docs available at: **http://localhost:8000/docs**
 1. Go to **💬 Chat**
 2. Ask anything in **Hungarian or English** — the AI responds in kind
 3. The assistant uses your actual lab values, BP history, and family history
-4. All responses end with a reminder to consult your doctor
+4. For lab questions it also gets MedlinePlus text on what the test measures;
+   the MedlinePlus pages used are listed under the answer as sources
+5. All responses end with a reminder to consult your doctor
+
+To enable the MedlinePlus lab texts, fill the cache once (51 requests to NLM,
+the same fixed list of lab-test codes for everyone; rerun now and then to
+refresh):
+
+```bash
+docker compose exec -w /app backend python -m scripts.warm_medlineplus          # dry run
+docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
+```
 
 ### Calculate Your Risk Scores (FINDRISC, Framingham)
 1. In **💬 Chat**, ask for your risk, e.g. "Mekkora a cukorbetegség kockázatom?"
@@ -143,7 +154,7 @@ API docs available at: **http://localhost:8000/docs**
 | Blood pressure | ✅ Stored only in your local PostgreSQL |
 | Family history | ✅ Stored only in your local PostgreSQL |
 | AI inference | ✅ Runs entirely on Ollama (local) |
-| MedlinePlus queries | ⚠️ Lookup terms only: screening condition names and the ICD-10 codes you enter for family history (free-text conditions are never sent). No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
+| MedlinePlus queries | ⚠️ Lookup terms only: screening condition names, the ICD-10 codes you enter for family history (free-text conditions are never sent), and a fixed list of lab-test codes that is the same for every user. Chat questions send nothing to MedlinePlus. No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
 | `/data/` folder | 🚫 In `.gitignore` — never committed |
 | `.env` file | 🚫 In `.gitignore` — never committed |
 
@@ -319,6 +330,14 @@ if" check is a substring match, so "ha " also matches inside words such as
 first (`PUT /risk/inputs`), then a new blood pressure reading (`POST /bp/`). If
 the second call fails, the first is kept and an error is shown. Stale values
 are marked in the chat reply, not in the form's captions.
+
+**MedlinePlus text is English and cached**: MedlinePlus offers English (and
+Spanish) only, so the model paraphrases the reference text in Hungarian; a small
+model may do this imperfectly, and the source link points to the original. The
+chat uses cached text only, also after it expires, until
+`scripts.warm_medlineplus --apply` is rerun. A lab is matched in the question by
+its name's start, so inflections that change the stem ("vércukrom" for
+"vércukor") are missed; flagged labs still get their reference.
 
 ## Roadmap (Planned / Not yet implemented)
 
