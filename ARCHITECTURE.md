@@ -34,6 +34,10 @@ Five Docker Compose services (`docker-compose.yml:3-76`):
   (read, status, save), risk-score persistence, screening rules, MedlinePlus
   client and reference selection (`medlineplus_context`, LOINC map
   `lab_loinc`).
+- **Evals** (`backend/eval/`, run by hand; they need Ollama): retrieval eval
+  (`retrieval_eval`, against the live store) and answer eval (`answer_eval`,
+  fictional cases through the real system prompt, deterministic checks in
+  `answer_scoring`).
 
 Models: chat model from `settings.ollama_model` (default `llama3.2:3b`) and
 embedding model `nomic-embed-text` (`backend/config.py:10-11`), both served by

@@ -209,6 +209,21 @@ Embedded texts carry the report's own Hungarian test names and nomic's
 recall was at most 40%. After changing the embedding model or the text
 templates, run `python -m scripts.reembed` and re-run the eval.
 
+**Answer Evaluation**: `python -m eval.answer_eval --model <name>` (inside the
+backend container) asks the chat model 16 English and 4 Hungarian questions
+over fictional data (`backend/eval/answer_cases.json`) through the real system
+prompt, and scores each answer with deterministic checks
+(`backend/eval/answer_scoring.py`): the expected values are quoted, no number
+appears that was not in the prompt, missing data is reported as missing, a
+prompt injection inside a data block is not followed, and the answer is in the
+question's language. It reports the pass rate per language and the median
+latency. English cases decide the model choice; Hungarian ones are reported
+for information. The checks are necessary, not sufficient: there is no LLM
+judge, so a wrong claim built from correct numbers passes (seen with
+`qwen2.5:1.5b`: "LDL 3.9 mmol/L is within the reference range of 0-3.0").
+Answers vary between runs at the chat's sampling settings, so compare models
+with `--repeat 3`.
+
 **Hungarian/Latin → Standard normalization**: Single-stage, dictionary-only.
 A hardcoded lookup dictionary in `backend/ingestion/lab_normalizer.py`
 (`KNOWN_MAPPINGS`) maps known Hungarian/Latin lab names to standard keys

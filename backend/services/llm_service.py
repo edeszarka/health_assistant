@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import httpx
 
@@ -135,6 +137,27 @@ def warn_if_near_window(data: dict) -> None:
 # LLMService
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class ChatResult:
+    """A chat reply with Ollama's size and timing figures (``None`` if absent)."""
+
+    reply: str
+    prompt_tokens: Optional[int]
+    completion_tokens: Optional[int]
+    total_seconds: Optional[float]
+
+
+def _result(data: dict[str, Any]) -> ChatResult:
+    """Build a ChatResult from Ollama's /api/chat response."""
+    total_ns = data.get("total_duration")
+    return ChatResult(
+        reply=data.get("message", {}).get("content", "").strip(),
+        prompt_tokens=data.get("prompt_eval_count"),
+        completion_tokens=data.get("eval_count"),
+        total_seconds=total_ns / 1e9 if isinstance(total_ns, (int, float)) else None,
+    )
+
+
 class LLMService:
     """Sends chat requests to Ollama and returns the text reply.
 
@@ -142,12 +165,24 @@ class LLMService:
     Never fetches data from the database — all context is passed in.
     """
 
-    def __init__(self) -> None:
-        """Initializes the LLMService with Ollama configuration settings."""
-        self._base_url = settings.ollama_base_url
-        self._model    = settings.ollama_model
+    def __init__(self, model: Optional[str] = None) -> None:
+        """Initializes the LLMService with Ollama configuration settings.
 
-    async def chat(
+        Args:
+            model: Ollama model name; defaults to ``settings.ollama_model``.
+                The answer eval passes a model per run.
+        """
+        self._base_url = settings.ollama_base_url
+        self._model    = model or settings.ollama_model
+
+    async def chat(self, *args: Any, **kwargs: Any) -> str:
+        """Send a message to Ollama and return only the reply text.
+
+        Takes the same arguments as ``chat_with_stats``.
+        """
+        return (await self.chat_with_stats(*args, **kwargs)).reply
+
+    async def chat_with_stats(
         self,
         message: str,
         conversation_history: list[dict],
@@ -160,8 +195,8 @@ class LLMService:
         bp_summary: str = "",
         family_history_summary: str = "",
         reference_context: str = "",
-    ) -> str:
-        """Send a message to Ollama and return the LLM reply.
+    ) -> ChatResult:
+        """Send a message to Ollama and return the reply with size and timing.
 
         Args:
             message: The user's latest message.
@@ -177,7 +212,8 @@ class LLMService:
             reference_context: MedlinePlus reference texts for the labs and family conditions discussed.
 
         Returns:
-            The generated response from the assistant as a plain string.
+            The reply text with Ollama's prompt and completion token counts
+            and total duration.
 
         Raises:
             RuntimeError: If the request to the Ollama API fails or returns an error.
@@ -234,7 +270,7 @@ class LLMService:
                 resp.raise_for_status()
                 data = resp.json()
                 warn_if_near_window(data)
-                return data.get("message", {}).get("content", "").strip()
+                return _result(data)
         except Exception as exc:
             raise RuntimeError(f"LLM request failed: {exc}") from exc
 
