@@ -32,9 +32,10 @@ telemetry is off (#27), so nothing else leaves the host.
 ## Consequences
 
 - Answers are slow on CPU: with the default `qwen2.5:3b`, ~30 s for a small
-  prompt and 130–150 s for a lab question with a ~2500-token prompt that is
-  not cached (measured 2026-10-19; see the correction in
-  [0010](0010-chat-model-choice.md)).
+  prompt and 73–81 s for a lab question with a ~1100–1300-token prompt that
+  is not cached, up to ~140 s for a long answer or right after the model was
+  unloaded (measured 2026-10-19; see [0010](0010-chat-model-choice.md) and
+  [0012](0012-lab-context-asked-and-flagged.md)).
 - Only small models are practical (3B parameters; see
   [0010](0010-chat-model-choice.md)), so answer quality, instruction
   following and Hungarian output are limited. The prompt therefore gets pre-computed numbers and
