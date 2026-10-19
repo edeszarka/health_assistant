@@ -111,6 +111,18 @@ API docs available at: **http://localhost:8000/docs**
 3. The assistant uses your actual lab values, BP history, and family history
 4. All responses end with a reminder to consult your doctor
 
+### Calculate Your Risk Scores (FINDRISC, Framingham)
+1. In **💬 Chat**, ask for your risk, e.g. "Mekkora a cukorbetegség kockázatom?"
+   or "What is my cardiovascular risk?"
+2. The reply lists what is stored (value and date, or "no data"), without
+   calling the LLM, and a form opens below it, prefilled with the stored values
+3. Fill in the profile once (birth year and month, sex, height, the FINDRISC
+   and Framingham questions) and enter fresh weight, waist, blood pressure or
+   cholesterol (with its unit) if you have them
+4. **Save and calculate** stores the values and the scores; **Calculate with
+   stored data** uses what is already stored. "What if" questions ("Ha 80 kg
+   lennék…") are recalculated in memory and never saved
+
 ### View Recommendations
 1. Go to **📋 Recommendations**
 2. See a personalized checklist of health screenings based on your profile and data
@@ -288,12 +300,25 @@ women's table, no Framingham score is shown or saved for women (FINDRISC is
 unaffected).
 
 **Risk scores need a complete profile**: FINDRISC and Framingham run only when
-every input is stored (profile answers via `PUT /risk/inputs`, a weight and
+every input is stored (profile answers from the chat risk form, a weight and
 waist measurement, and for Framingham cholesterol, HDL and a systolic BP). A
 missing input skips the score instead of counting as 0 points, so a score may be
 unavailable instead of too low. Physical activity is the user's yes/no answer to
 the FINDRISC question, not derived from wearable step data. Age comes from the
 birth year and month, so it can be up to one month early.
+
+**Risk questions open the input form, not the LLM**: any chat message with a
+risk keyword (`risk`, `kockázat`, `rizik`, `findrisc`, `framingham`, …) that is
+not a "what if" question gets the stored-input list and the form, without an LLM
+answer. This also applies to follow-ups such as "mit jelent a kockázatom?"; to
+ask the LLM about a result, phrase the question without these words. The "what
+if" check is a substring match, so "ha " also matches inside words such as
+"néha", and such a question goes to the LLM instead of the form.
+
+**The risk form saves in two calls**: the profile and measurements are saved
+first (`PUT /risk/inputs`), then a new blood pressure reading (`POST /bp/`). If
+the second call fails, the first is kept and an error is shown. Stale values
+are marked in the chat reply, not in the form's captions.
 
 ## Roadmap (Planned / Not yet implemented)
 
