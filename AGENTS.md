@@ -32,6 +32,7 @@ are described in [ARCHITECTURE.md](ARCHITECTURE.md).
 3. Invariants: if a change could violate an Invariant in ARCHITECTURE.md, stop and ask before editing.
 4. Docs sync: if your change makes README.md or ARCHITECTURE.md inaccurate, update the affected lines if they are in scope; otherwise list them in the final summary.
 5. At the end, give a summary: which files, why, with what risk, and which questions remain open.
+6. Decision records: when a change chooses between real alternatives (data model, external calls, prompt or context design, an invariant), add or update an ADR in `docs/adr/` from `docs/adr/template.md` and list it in `docs/adr/README.md`. A changed decision gets a new record that supersedes the old one.
 
 ## Output protocol (lean)
 
