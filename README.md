@@ -194,11 +194,12 @@ English answers deciding (3 × 16 answers each):
 | qwen2.5:1.5b | 81% | 15% | 31 s / 42 s | 46 / 11 tokens/s |
 
 ¹ With `--cold`, no prompt prefix is reused from Ollama's cache. The eval's
-fictional prompts are ~1100 tokens; real prompts with a full lab history are
-~2300–2600 tokens, so a cold lab question takes about **130–150 s** with
-`qwen2.5:3b` (measured live: 150 s) and about 65 s with `qwen2.5:1.5b`. Small
-prompts (e.g. a blood-pressure question) take ~30 s; a repeated question whose
-prompt is cached takes ~30 s.
+fictional prompts are ~1100 tokens. A real lab question now carries only the
+asked-about and flagged labs ([ADR 0012](docs/adr/0012-lab-context-asked-and-flagged.md)),
+a ~1100–1300-token prompt, and took **73–81 s** live with `qwen2.5:3b` when not
+cached (before: ~2500 tokens, 150 s). Long answers, or the first question after
+Ollama unloaded the model, took 106–137 s. A follow-up whose prompt is cached
+takes ~25–50 s.
 
 The two 3B models tie on pass rate. `qwen2.5:3b` was chosen because its
 failures were general reference ranges quoted from memory, while
@@ -327,9 +328,9 @@ Production health systems require a data-verification UI before persistence.
 
 **CPU-only LLM**: On a CPU-only laptop, `qwen2.5:3b` reads the prompt at about
 23 tokens/s and writes at about 6 tokens/s. A question with a small prompt
-takes ~30 s; a lab question with the full history (~2500-token prompt) takes
-130–150 s when the prompt is not cached. Reading the prompt dominates, so a
-shorter prompt is the main lever.
+takes ~30 s; a lab question (~1100–1300-token prompt, only the asked-about and
+flagged labs) takes about 75–80 s when the prompt is not cached, and up to
+~140 s for a long answer or right after the model was unloaded.
 Production deployment would require GPU inference or a hosted model endpoint.
 
 **Embedding staleness**: Embeddings are created at upload time and not updated if source
