@@ -26,7 +26,8 @@ was Ollama's default 4096 tokens, while the system prompt alone is about
   the 512-token reply budget, a safety margin and the estimated system prompt
   and question; the oldest turns are dropped first.
 - Tokens are estimated at 2.5 characters per token. Real prompts measured
-  2.68–2.78 with `qwen2.5:1.5b`, so the estimate errs high. A warning is
+  2.68–2.78 with `qwen2.5:1.5b`, and the same with `qwen2.5:3b` (shared
+  tokenizer), so the estimate errs high. A warning is
   logged when Ollama's `prompt_eval_count` shows it was too low.
 
 ## Alternatives considered

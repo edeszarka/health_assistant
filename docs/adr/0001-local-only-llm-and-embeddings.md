@@ -31,10 +31,11 @@ telemetry is off (#27), so nothing else leaves the host.
 
 ## Consequences
 
-- Answers are slow on CPU: 24–134 s per reply was measured on 2026-10-19.
-- Only small models are practical (`llama3.2:3b` by default, smaller ones by
-  configuration), so answer quality, instruction following and Hungarian
-  output are limited. The prompt therefore gets pre-computed numbers and
+- Answers are slow on CPU: with the default `qwen2.5:3b`, the answer eval
+  measured a median of 23 s and a p90 of 43 s per reply on 2026-10-19.
+- Only small models are practical (3B parameters; see
+  [0010](0010-chat-model-choice.md)), so answer quality, instruction
+  following and Hungarian output are limited. The prompt therefore gets pre-computed numbers and
   explicit rules instead of asking the model to reason over raw data.
 - External reference text (MedlinePlus) has to be fetched without revealing
   the user's data; see [0007](0007-medlineplus-cache-only.md).

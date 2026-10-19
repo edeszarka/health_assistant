@@ -7,12 +7,15 @@ class Settings(BaseSettings):
     database_url: str
     sync_database_url: str
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2:3b"
+    # Chosen with the answer eval on 2026-10-19 (docs/adr/0010): English pass
+    # rate 92%, median reply 23 s on a CPU-only laptop.
+    ollama_model: str = "qwen2.5:3b"
     # Context window of the chat model, sent as Ollama's num_ctx (Ollama's
     # default was 4096). The system prompt alone is ~2.3-3k tokens (measured
     # 2026-10-19) and 512 are reserved for the reply, so 4096 left room for
     # only 1-2 earlier turns. 8192 fits several; the cost is a larger KV cache
-    # (roughly 100-200 MB for qwen2.5:1.5b) and slower prompt processing on CPU.
+    # (qwen2.5:3b takes 2.4 GB loaded with this window) and slower prompt
+    # processing on CPU.
     llm_num_ctx: int = 8192
     embed_model: str = "nomic-embed-text"
     embed_dimensions: int = 768
