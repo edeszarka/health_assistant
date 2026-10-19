@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # templates or data.
     rag_similarity_threshold: float = 0.62
     rag_top_k: int = 1
+    # Age after which a stored risk input is shown as "stale" on the risk form.
+    # Stale values stay usable; the user decides whether to enter a fresh one.
+    # Practical defaults, not clinical guidance: weight, waist and blood
+    # pressure can change within months; a lipid panel is typically repeated
+    # about yearly.
+    risk_measurement_stale_days: int = 90
+    risk_lab_stale_days: int = 365
 
     class Config:
         env_file = ".env"

@@ -24,7 +24,12 @@ from models.db_models import (
 from services.rag_service import rag_service
 from services.llm_service import llm_service
 from services.risk_engine import risk_engine
-from services.risk_score_service import compute_baseline_scores
+from services.risk_inputs import WAIST_METRIC, latest_metric
+from services.risk_score_service import (
+    activity_minutes,
+    compute_baseline_scores,
+    findrisc_missing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +92,7 @@ def _detect_intent(message: str) -> set[str]:
 
     mapping = {
         "steps": ["step", "walk", "lépés", "gyalog"],
-        "weight": ["weight", "kg", "bmi", "súly", "testsúly"],
+        "weight": ["weight", "kg", "bmi", "súly", "testsúly", "waist", "derék"],
         "calories": ["calori", "kcal", "kalória"],
         "sleep": ["sleep", "alvás", "alv"],
         "heart_rate": ["heart rate", "pulse", "bpm", "pulzus", "szívfrekvencia"],
@@ -265,6 +270,12 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
         if weight:
             lines.append("\n=== Weight ===")
             lines.append(f"  Latest: {weight.value} kg")
+
+        # Waist circumference — latest only (entered on the risk form)
+        waist = await latest_metric(db, WAIST_METRIC)
+        if waist:
+            lines.append("\n=== Waist circumference ===")
+            lines.append(f"  Latest: {waist.value} cm ({waist.recorded_on})")
 
         # Active calories — last 7 days
         result = await db.execute(
@@ -531,7 +542,7 @@ async def _build_risk_scores(
             bmi_from_db = weight_kg / ((profile.height_cm / 100) ** 2)
 
         # ── 1. Baseline scores: computed and persisted by the shared service ──
-        fam_diabetes = "first_degree" if getattr(profile, "family_diabetes", False) else "none"
+        fam_diabetes = getattr(profile, "family_diabetes", None) or "none"
         baseline = await compute_baseline_scores(db, profile)
         if baseline.get("findrisc_score") is not None:
             scores["findrisc_score"] = baseline["findrisc_score"]
@@ -571,22 +582,33 @@ async def _build_risk_scores(
                 findrisc_labels.append(f"BMI={m.group(1)}")
 
             if findrisc_overrides and profile:
-                h = risk_engine.calculate_findrisc(
-                    age=profile.age,
-                    sex=profile.sex,
-                    waist_cm=findrisc_overrides.get("waist_cm", getattr(profile, "waist_cm", None)),
-                    bmi=findrisc_overrides.get("bmi", bmi_from_db),
-                    physical_activity_mins_per_day=30.0,
-                    vegetables_daily=getattr(profile, "vegetables_daily", False),
-                    hypertension_medication=getattr(profile, "bp_medication", False),
-                    high_glucose_history=getattr(profile, "high_glucose_history", False),
-                    family_history_diabetes=fam_diabetes,
-                )
-                scores["findrisc_hypothetical"] = (
-                    f"Score={h['score']} ({h['risk_category']}, "
-                    f"10-yr risk {h['ten_year_risk_percent']}%) "
-                    f"— recalculated with {', '.join(findrisc_labels)}"
-                )
+                waist = findrisc_overrides.get("waist_cm")
+                if waist is None:
+                    stored_waist = await latest_metric(db, WAIST_METRIC)
+                    waist = stored_waist.value if stored_waist else None
+                bmi = findrisc_overrides.get("bmi", bmi_from_db)
+                missing = findrisc_missing(profile, bmi, waist)
+                if missing:
+                    scores["findrisc_hypothetical"] = (
+                        f"Cannot recalculate: missing {', '.join(missing)}."
+                    )
+                else:
+                    h = risk_engine.calculate_findrisc(
+                        age=profile.age,
+                        sex=profile.sex,
+                        waist_cm=waist,
+                        bmi=bmi,
+                        physical_activity_mins_per_day=activity_minutes(profile),
+                        vegetables_daily=getattr(profile, "vegetables_daily", False),
+                        hypertension_medication=getattr(profile, "bp_medication_ever", False),
+                        high_glucose_history=getattr(profile, "high_glucose_history", False),
+                        family_history_diabetes=fam_diabetes,
+                    )
+                    scores["findrisc_hypothetical"] = (
+                        f"Score={h['score']} ({h['risk_category']}, "
+                        f"10-yr risk {h['ten_year_risk_percent']}%) "
+                        f"— recalculated with {', '.join(findrisc_labels)}"
+                    )
 
             # --- Framingham hypothetical ---
             fram_overrides: Dict[str, Any] = {}
@@ -642,8 +664,8 @@ async def _build_risk_scores(
                         total_cholesterol=tc,
                         hdl_cholesterol=hdl,
                         systolic_bp=sys_bp,
-                        bp_treated=getattr(profile, "bp_medication", False),
-                        diabetes=getattr(profile, "high_glucose_history", False),
+                        bp_treated=getattr(profile, "bp_medication_current", False),
+                        diabetes=getattr(profile, "diabetes_diagnosed", False),
                         smoker=getattr(profile, "smoking", False),
                     )
                     scores["framingham_hypothetical"] = (

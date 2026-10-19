@@ -1,4 +1,5 @@
 import datetime
+from typing import cast
 from sqlalchemy import (
     Column,
     Integer,
@@ -17,25 +18,64 @@ from pgvector.sqlalchemy import Vector
 from database.connection import Base
 
 
+def age_on(birth_year: int, birth_month: int, today: datetime.date) -> int:
+    """Return the age in whole years from a birth year and month.
+
+    The birthday is taken as the first day of the birth month, so the result
+    is at most one month early; only year and month are stored.
+
+    Args:
+        birth_year: Year of birth.
+        birth_month: Month of birth, 1-12.
+        today: The reference date.
+
+    Returns:
+        The age in completed years.
+    """
+    had_birthday = today.month >= birth_month
+    return today.year - birth_year - (0 if had_birthday else 1)
+
+
 class UserProfile(Base):
-    """Stores the single user's demographic and risk-factor profile."""
+    """Stores the single user's demographic and risk-factor profile.
+
+    Weight and waist circumference change over time, so they are stored as
+    measurements in ``samsung_health_metrics`` (``weight_kg``, ``waist_cm``),
+    not here. Every column is answered on the profile form, so a stored row is
+    always complete.
+    """
 
     __tablename__ = "user_profile"
 
     id = Column(Integer, primary_key=True, index=True)
-    age = Column(Integer, nullable=False)
-    sex = Column(String(10), nullable=False)  # "male" / "female" / "other"
-    height_cm = Column(Integer, nullable=True)
-    waist_cm = Column(Integer, nullable=True)
-    smoking = Column(Boolean, default=False)
-    bp_medication = Column(Boolean, default=False)
-    high_glucose_history = Column(Boolean, default=False)
-    vegetables_daily = Column(Boolean, default=False)
-    family_diabetes = Column(Boolean, default=False)
+    birth_year = Column(Integer, nullable=False)
+    birth_month = Column(Integer, nullable=False)
+    sex = Column(String(10), nullable=False)  # biological sex: "male" / "female"
+    height_cm = Column(Integer, nullable=False)
+    smoking = Column(Boolean, nullable=False, default=False)
+    # FINDRISC asks whether BP medication was EVER taken regularly; Framingham
+    # asks whether BP is CURRENTLY treated.
+    bp_medication_ever = Column(Boolean, nullable=False, default=False)
+    bp_medication_current = Column(Boolean, nullable=False, default=False)
+    # FINDRISC: high blood glucose ever found; Framingham: diagnosed diabetes.
+    high_glucose_history = Column(Boolean, nullable=False, default=False)
+    diabetes_diagnosed = Column(Boolean, nullable=False, default=False)
+    vegetables_daily = Column(Boolean, nullable=False, default=False)
+    # FINDRISC: at least 30 minutes of physical activity daily.
+    physically_active = Column(Boolean, nullable=False, default=False)
+    # FINDRISC: "none" / "second_degree" / "first_degree"
+    family_diabetes = Column(String(16), nullable=False, default="none")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def age(self) -> int:
+        """Age in whole years today, derived from birth year and month."""
+        return age_on(
+            cast(int, self.birth_year), cast(int, self.birth_month), datetime.date.today()
+        )
 
 
 class LabResult(Base):
@@ -95,7 +135,9 @@ class SamsungHealthMetric(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     metric_type = Column(String(32), nullable=False, index=True)
-    # steps / sleep_minutes / heart_rate / weight_kg / bmi
+    # steps / sleep_minutes / heart_rate / weight_kg / bmi / waist_cm
+    # Manual entries (weight_kg, waist_cm from the risk form) use a
+    # "manual_<timestamp>_<uuid>" source_file.
     value = Column(Float, nullable=False)
     recorded_at = Column(DateTime(timezone=True), nullable=False)
     source_file = Column(String(256))

@@ -1,6 +1,7 @@
 """Tests for unit handling in the hypothetical Framingham fallback."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,12 +15,14 @@ def _profile() -> SimpleNamespace:
         age=50,
         sex="male",
         height_cm=175,
-        waist_cm=90,
         smoking=False,
-        bp_medication=False,
+        bp_medication_ever=False,
+        bp_medication_current=False,
         high_glucose_history=False,
+        diabetes_diagnosed=False,
         vegetables_daily=True,
-        family_diabetes=False,
+        physically_active=True,
+        family_diabetes="none",
     )
 
 
@@ -120,3 +123,41 @@ async def test_hypothetical_framingham_withheld_for_female_profile():
     line = scores.get("framingham_hypothetical", "")
     assert line.startswith("Not available")
     assert "% 10-yr CV risk" not in line
+
+
+@pytest.mark.asyncio
+async def test_hypothetical_findrisc_without_waist_reports_missing():
+    """A 'what if' weight with no stored waist names the gap instead of a low score."""
+    db = AsyncMock()
+    db.execute.side_effect = [
+        _scalar(None),  # _get_latest_weight
+        _row(None),     # latest waist measurement
+    ]
+
+    with patch(
+        "routers.chat.compute_baseline_scores", new=AsyncMock(return_value={})
+    ):
+        scores = await _build_risk_scores(db, _profile(), "what if i weighed 80 kg")
+
+    line = scores.get("findrisc_hypothetical", "")
+    assert line.startswith("Cannot recalculate")
+    assert "waist_cm" in line
+
+
+@pytest.mark.asyncio
+async def test_hypothetical_findrisc_uses_stored_waist():
+    """A 'what if' weight is scored with the latest stored waist measurement."""
+    db = AsyncMock()
+    db.execute.side_effect = [
+        _scalar(None),                                    # _get_latest_weight
+        _row((90.0, datetime(2026, 10, 1, tzinfo=timezone.utc))),  # latest waist
+    ]
+
+    with patch(
+        "routers.chat.compute_baseline_scores", new=AsyncMock(return_value={})
+    ):
+        scores = await _build_risk_scores(db, _profile(), "what if i weighed 80 kg")
+
+    line = scores.get("findrisc_hypothetical", "")
+    assert line.startswith("Score=")
+    db.add.assert_not_called()
