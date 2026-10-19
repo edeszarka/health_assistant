@@ -25,7 +25,9 @@ for msg in st.session_state.messages:
 if st.session_state.risk_request:
     result_message = render_risk_form(BACKEND, st.session_state.risk_request)
     if result_message:
-        st.session_state.messages.append({"role": "assistant", "content": result_message})
+        st.session_state.messages.append(
+            {"role": "assistant", "content": result_message, "source": "automatic"}
+        )
         st.session_state.risk_request = None
         st.rerun()
 
@@ -35,9 +37,11 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Build history excluding latest message
+    # Build history excluding latest message. "source" tells the backend which
+    # assistant turns the model did not write: errors are dropped, automatic
+    # replies are marked (backend/services/chat_history.py).
     history = [
-        {"role": m["role"], "content": m["content"]}
+        {"role": m["role"], "content": m["content"], "source": m.get("source", "llm")}
         for m in st.session_state.messages[:-1]
     ]
 
@@ -54,6 +58,7 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
                     data = resp.json()
                     reply = data.get("reply", "Sorry, I could not generate a response.")
                     sources = data.get("sources", [])
+                    reply_source = data.get("source", "llm")
                     if data.get("data_request"):
                         data_request = {
                             "status": data["data_request"],
@@ -66,15 +71,19 @@ if prompt := st.chat_input("Type your question… (Hungarian or English)"):
                     detail = e.response.text
                 reply = f"❌ Backend error: {detail}"
                 sources = []
+                reply_source = "error"
             except Exception as e:
                 reply = f"❌ Backend error: {e}"
                 sources = []
+                reply_source = "error"
 
         st.markdown(reply)
         if sources:
             st.caption(f"Sources: {', '.join(sources)}")
 
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.session_state.messages.append(
+        {"role": "assistant", "content": reply, "source": reply_source}
+    )
     # A new question closes an open form; a risk request opens a fresh one.
     st.session_state.risk_request = data_request
     if data_request:
