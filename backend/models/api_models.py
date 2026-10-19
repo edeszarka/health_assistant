@@ -123,10 +123,17 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """LLM reply with source citations."""
+    """LLM reply with source citations.
+
+    For an explicit risk-calculation request the reply is generated without
+    the LLM and ``data_request`` carries the stored inputs, so the client can
+    show the input form.
+    """
 
     reply: str
     sources: List[str] = []
+    language: str = "English"  # detected language of the user's message
+    data_request: Optional[RiskInputsStatus] = None
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -301,3 +308,7 @@ class RiskCalculationResponse(BaseModel):
     framingham_risk_percent: Optional[float] = None
     framingham_category: Optional[str] = None
     inputs: RiskInputsStatus
+
+
+# ChatResponse refers to RiskInputsStatus, which is defined further down.
+ChatResponse.model_rebuild()

@@ -24,7 +24,8 @@ from models.db_models import (
 from services.rag_service import rag_service
 from services.llm_service import llm_service
 from services.risk_engine import risk_engine
-from services.risk_inputs import WAIST_METRIC, latest_metric
+from services.risk_inputs import WAIST_METRIC, collect_inputs, latest_metric
+from services.risk_inputs_text import format_risk_inputs
 from services.risk_score_service import (
     activity_minutes,
     compute_baseline_scores,
@@ -53,6 +54,19 @@ RELEVANT_LAB_TESTS: set[str] = {
     "tsh", "free_t4", "free_t3", "crp", "urinalysis", "urine_sediment",
 }
 
+# Keywords that mark a risk-score question. Substring match, so "kockázat"
+# also covers inflected forms ("kockázatom", "kockázata"); "rizik" covers
+# "rizikó"/"rizikóm".
+RISK_KEYWORDS: tuple[str, ...] = (
+    "risk", "framingham", "findrisc", "cardiovascular", "diabetes risk",
+    "kockázat", "rizik", "szív- és érrendszer",
+)
+# Phrases that mark a "what if" question; its scores stay in memory.
+HYPOTHETICAL_TRIGGERS: tuple[str, ...] = (
+    "what if", "if i", "suppose", "assuming", "hypothetically",
+    "if my", "would be", "were", "ha ", "mi lenne", "ha én",
+)
+
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
@@ -76,6 +90,30 @@ def _detect_language(message: str) -> str:
     has_hu_chars = any(c in hungarian_chars for c in message)
     has_hu_words = any(w in message.lower().split() for w in hungarian_words)
     return "Hungarian" if (has_hu_chars or has_hu_words) else "English"
+
+
+def _is_hypothetical(message: str) -> bool:
+    """Return whether the message asks a "what if" question."""
+    msg = message.lower()
+    return any(t in msg for t in HYPOTHETICAL_TRIGGERS)
+
+
+def _is_risk_calculation_request(message: str) -> bool:
+    """Return whether the user explicitly asks for their risk scores.
+
+    Only a real risk keyword counts; the "no keyword matched" fallback of
+    ``_detect_intent`` does not. "What if" questions keep their in-memory
+    recalculation path and are not treated as a request to enter data.
+
+    Args:
+        message: The user's input message string.
+
+    Returns:
+        ``True`` when the stored inputs should be shown with the input form.
+    """
+    msg = message.lower()
+    has_keyword = any(kw in msg for kw in RISK_KEYWORDS)
+    return has_keyword and not _is_hypothetical(message)
 
 
 def _detect_intent(message: str) -> set[str]:
@@ -129,10 +167,7 @@ def _detect_intent(message: str) -> set[str]:
             "family", "hereditary", "genetic", "parent", "father", "mother",
             "csalá", "örökletes"
         ],
-        "risk": [
-            "risk", "framingham", "findrisc", "cardiovascular",
-            "diabetes risk", "kockázat"
-        ],
+        "risk": list(RISK_KEYWORDS),
     }
 
     for intent, keywords in mapping.items():
@@ -555,12 +590,7 @@ async def _build_risk_scores(
         # recalculation below stays local to this function's return value.
         msg = user_message.lower()
         # Only run hypothetical detection if message contains hypothetical language
-        HYPOTHETICAL_TRIGGERS = {
-            "what if", "if i", "suppose", "assuming", "hypothetically",
-            "if my", "would be", "were", "ha ", "mi lenne", "ha én",
-        }
-        is_hypothetical = any(t in msg for t in HYPOTHETICAL_TRIGGERS)
-        if is_hypothetical:
+        if _is_hypothetical(user_message):
             # --- FINDRISC hypothetical ---
             findrisc_overrides: Dict[str, float] = {}
             findrisc_labels: List[str] = []
@@ -694,6 +724,35 @@ async def _build_risk_scores(
 
 
 
+async def _risk_data_request(db: AsyncSession, user_language: str) -> ChatResponse:
+    """Reply to a risk request with the stored inputs and an input-form request.
+
+    Args:
+        db: Async database session.
+        user_language: Detected language of the user's message.
+
+    Returns:
+        A ChatResponse whose ``data_request`` lets the client show the form.
+
+    Raises:
+        HTTPException: 503 when the stored inputs cannot be read.
+    """
+    try:
+        status = await collect_inputs(db)
+    except Exception as exc:
+        logger.error("Could not read stored risk inputs: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="The stored health data could not be read. Please try again later.",
+        )
+    return ChatResponse(
+        reply=format_risk_inputs(status, user_language),
+        sources=[],
+        language=user_language,
+        data_request=status,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chat endpoint
 # ---------------------------------------------------------------------------
@@ -719,6 +778,11 @@ async def chat(
     """
     # Detect language first — passed to LLM to enforce reply language
     user_language = _detect_language(request.message)
+
+    # Explicit risk request: list the stored inputs and ask for fresh ones,
+    # without the LLM, so no value can be invented.
+    if _is_risk_calculation_request(request.message):
+        return await _risk_data_request(db, user_language)
 
     # Detect intent to reduce context bloat
     intents = _detect_intent(request.message)
@@ -793,4 +857,4 @@ async def chat(
             detail="The language model is unavailable. Please try again later.",
         )
 
-    return ChatResponse(reply=reply, sources=[])
+    return ChatResponse(reply=reply, sources=[], language=user_language)
