@@ -77,6 +77,17 @@ def test_disclaimer_and_not_available():
     assert not says_not_available("Your vitamin D is 54 nmol/L.")
 
 
+def test_not_available_phrasings_seen_live():
+    """Correct "missing data" answers from llama3.2:3b and qwen2.5:3b were scored as failures."""
+    for answer in (
+        "Unfortunately, I don't see any information about your vitamin D level in your provided data.",
+        "There is no mention of a TSH (thyroid-stimulating hormone) result in the provided data.",
+        "I couldn't find your vitamin D level in the provided data.",
+        "It seems there is no thyroid-stimulating hormone (TSH) result provided in your lab results.",
+    ):
+        assert says_not_available(answer), answer
+
+
 # ── Scoring a case ───────────────────────────────────────────────────────────
 
 def _result(reply: str) -> ChatResult:
@@ -162,3 +173,16 @@ async def test_chat_still_returns_only_the_reply():
     with patch("services.llm_service.httpx.AsyncClient", return_value=client):
         reply = await llm_service.chat(message="hi", conversation_history=[], context="")
     assert reply == "hello"
+
+
+def test_rescore_uses_saved_answers_without_the_model():
+    from eval.answer_eval import rescore
+    base, cases = load_cases()
+    saved = {"model": "m", "results": [
+        {"case_id": "missing_tsh", "reply": "There is no mention of a TSH result.", "seconds": 5.0,
+         "completion_tokens": 9, "passed": False},
+    ]}
+    with patch("services.llm_service.httpx.AsyncClient") as client:
+        results = rescore(saved, base, cases)
+    client.assert_not_called()
+    assert results[0].passed and results[0].seconds == 5.0

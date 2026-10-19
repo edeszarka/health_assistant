@@ -34,6 +34,9 @@ _NOT_AVAILABLE = re.compile(
     r"|no (data|record|records|result|results|information|value|measurement)"
     r"|(do not|don't|does not|doesn't) (have|show|include|contain)"
     r"|(is|are)n't (available|listed|recorded)"
+    # Phrasings seen live (llama3.2:3b, qwen2.5:3b, 2026-10-19):
+    r"|(don't|do not|can't|cannot) (see|find)|(couldn't|could not) find"
+    r"|no mention|not mentioned|(there is|there's) no\b|is missing"
     r"|nincs|nem áll rendelkezésre|nem található|nem szerepel",
     re.IGNORECASE,
 )

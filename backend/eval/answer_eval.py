@@ -5,6 +5,7 @@ Run inside the backend container (needs Ollama, not the database):
     python -m eval.answer_eval --model qwen2.5:3b --repeat 3
     python -m eval.answer_eval --model llama3.2:3b --repeat 3 --json /tmp/llama.json
     python -m eval.answer_eval --model qwen2.5:3b --case ldl_lookup   # one case
+    python -m eval.answer_eval --rescore /tmp/llama.json --json /tmp/llama2.json  # after a scorer fix
 
 Answers vary between runs (the chat's default sampling is used on purpose),
 so compare models with ``--repeat 3``. The JSON output keeps each answer, so a
@@ -126,6 +127,20 @@ async def run_case(service: LLMService, base: dict[str, Any], case: dict[str, An
     return score_case(case, context, result)
 
 
+def rescore(saved: dict[str, Any], base: dict[str, Any], cases: list[dict[str, Any]]) -> list[CaseResult]:
+    """Score the answers saved by ``--json`` again, without calling the model.
+
+    Used after a scorer fix: the answers stay the same, only the checks change.
+    """
+    by_id = {case["id"]: case for case in cases}
+    results = []
+    for old in saved["results"]:
+        case = by_id[old["case_id"]]
+        stats = ChatResult(old["reply"], None, old.get("completion_tokens"), old.get("seconds"))
+        results.append(score_case(case, case_context(base, case), stats))
+    return results
+
+
 def _rate(results: list[CaseResult], attr: str) -> float:
     return sum(bool(getattr(r, attr)) for r in results) / len(results)
 
@@ -166,14 +181,20 @@ def _print(model: str, results: list[CaseResult]) -> None:
 
 
 async def main(
-    model: str, repeat: int, json_path: Optional[str], only: Optional[list[str]] = None
+    model: Optional[str], repeat: int, json_path: Optional[str],
+    only: Optional[list[str]] = None, rescore_path: Optional[str] = None,
 ) -> None:
     base, cases = load_cases()
-    if only:
-        cases = [case for case in cases if case["id"] in only]
-    service = LLMService(model=model)
-    results = [await run_case(service, base, case) for _ in range(repeat) for case in cases]
-    _print(model, results)
+    if rescore_path:
+        saved = json.loads(Path(rescore_path).read_text(encoding="utf-8"))
+        model = saved["model"]
+        results = rescore(saved, base, cases)
+    else:
+        if only:
+            cases = [case for case in cases if case["id"] in only]
+        service = LLMService(model=model)
+        results = [await run_case(service, base, case) for _ in range(repeat) for case in cases]
+    _print(str(model), results)
     if json_path:
         Path(json_path).write_text(
             json.dumps({"model": model, "results": [asdict(r) for r in results],
@@ -185,9 +206,13 @@ async def main(
 
 if __name__ == "__main__":
     cli = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    cli.add_argument("--model", required=True, help="Ollama model name, e.g. qwen2.5:3b")
+    cli.add_argument("--model", help="Ollama model name, e.g. qwen2.5:3b")
     cli.add_argument("--repeat", type=int, default=1, help="runs per case (sampling varies)")
     cli.add_argument("--json", dest="json_path", help="write results (with answers) to this file")
     cli.add_argument("--case", action="append", dest="only", help="run only this case id (repeatable)")
+    cli.add_argument("--rescore", dest="rescore_path",
+                     help="re-score the answers in a saved --json file; no model call")
     args = cli.parse_args()
-    asyncio.run(main(args.model, args.repeat, args.json_path, args.only))
+    if not (args.model or args.rescore_path):
+        cli.error("--model or --rescore is required")
+    asyncio.run(main(args.model, args.repeat, args.json_path, args.only, args.rescore_path))
