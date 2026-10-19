@@ -3,6 +3,8 @@
 The single description of how the system is built and which rules it must keep.
 For features, setup and usage see [README.md](README.md); for known limitations
 see [README › Known Limitations and Design Decisions](README.md#known-limitations-and-design-decisions).
+Why the main decisions were made, with the alternatives considered, is in the
+[Architecture Decision Records](docs/adr/README.md).
 
 Every statement below cites the code that supports it (`file:line`, paths
 relative to the repository root).
@@ -225,6 +227,16 @@ calls MedlinePlus; it reads the cache only.
 
 A change that could break an invariant in list (a) needs explicit approval
 before it is made (see [AGENTS.md](AGENTS.md)).
+
+Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-without-llm.md),
+[0006](docs/adr/0006-profile-model-and-in-chat-input.md); 2 →
+[0003](docs/adr/0003-hypothetical-scores-never-persisted.md); 3 →
+[0007](docs/adr/0007-medlineplus-cache-only.md),
+[0008](docs/adr/0008-chat-history-budget.md); 4, 6, 7 →
+[0001](docs/adr/0001-local-only-llm-and-embeddings.md),
+[0007](docs/adr/0007-medlineplus-cache-only.md); 5 →
+[0007](docs/adr/0007-medlineplus-cache-only.md); 8 →
+[0004](docs/adr/0004-withhold-female-framingham.md).
 
 ### (a) Enforced today
 

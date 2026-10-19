@@ -269,6 +269,9 @@ fires when at least one trigger matches.
 
 ## Known Limitations and Design Decisions
 
+The reasoning behind the main design decisions, with the alternatives that
+were considered, is recorded in [docs/adr](docs/adr/README.md).
+
 **Single-user, local-only**: Deliberately designed for personal use on a local machine.
 No health records leave the host; only MedlinePlus lookup terms do (see [Data Privacy](#data-privacy)). Multi-tenancy would require auth and user_id FKs on all tables.
 
