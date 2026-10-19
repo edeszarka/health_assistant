@@ -15,6 +15,7 @@ from routers import (
     family_history,
     dashboard,
     recommendations,
+    risk,
 )
 
 
@@ -49,6 +50,7 @@ app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(
     recommendations.router, prefix="/recommendations", tags=["recommendations"]
 )
+app.include_router(risk.router, prefix="/risk", tags=["risk"])
 
 
 @app.get("/health", tags=["system"])
