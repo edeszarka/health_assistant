@@ -21,6 +21,7 @@ from models.db_models import (
     BloodPressureReading,
     FamilyHistory,
 )
+from services.chat_history import clean_history
 from services.rag_service import rag_service
 from services.llm_service import llm_service
 from services.risk_engine import risk_engine
@@ -756,6 +757,7 @@ async def _risk_data_request(db: AsyncSession, user_language: str) -> ChatRespon
         reply=format_risk_inputs(status, user_language),
         sources=[],
         language=user_language,
+        source="automatic",
         data_request=status,
     )
 
@@ -864,9 +866,7 @@ async def chat(
     try:
         reply = await llm_service.chat(
             message=request.message,
-            conversation_history=[
-                turn.model_dump() for turn in request.conversation_history
-            ],
+            conversation_history=clean_history(request.conversation_history),
             context=rag_context,
             user_profile=profile,
             risk_scores=risk_scores,
