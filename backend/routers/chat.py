@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any, Awaitable, Dict, List, Optional
 
@@ -32,6 +33,7 @@ from services.medlineplus_context import (
     family_references,
     format_references,
     lab_references,
+    mentioned_keys,
     merge_references,
 )
 from services.risk_score_service import (
@@ -338,107 +340,167 @@ async def _build_health_metrics_summary(db: AsyncSession) -> str:
     return "\n".join(lines) if lines else "No Samsung Health / wearable data available."
 
 
-async def _build_lab_trends_summary(db: AsyncSession) -> str:
-    """Build a summary of lab history with trend analysis.
+@dataclass(frozen=True)
+class LabRow:
+    """One test's formatted line, with what the selection needs to know."""
 
-    Groups results by test name, computes direction and % change over time.
-    Derives HIGH/LOW from ref_range columns.
+    test_name: str
+    raw_name: str
+    line: str
+    flagged: bool
+    rising: bool
+
+
+@dataclass
+class LabSelection:
+    """Which tests go into the prompt, and how."""
+
+    asked: list[LabRow] = field(default_factory=list)
+    flagged: list[LabRow] = field(default_factory=list)
+    key: list[LabRow] = field(default_factory=list)
+    names_only: list[LabRow] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+
+
+def _lab_row(test_name: str, readings: list[LabResult]) -> Optional[LabRow]:
+    """Format one test's history, trend and flag as a prompt line.
+
+    Args:
+        test_name: Canonical test key.
+        readings: All results for the test.
+
+    Returns:
+        The row, or ``None`` when no reading has a value.
+    """
+    readings    = sorted(readings, key=lambda r: r.test_date or date.min)
+    values      = [r.value for r in readings if r.value is not None]
+    dates       = [r.test_date for r in readings if r.value is not None]
+    if not values:
+        return None
+
+    latest_row  = readings[-1]
+    unit        = latest_row.unit or ""
+    is_flagged  = latest_row.is_flagged or False
+
+    # Derive HIGH/LOW from ref range (no flag_direction column)
+    if is_flagged and latest_row.ref_range_high is not None:
+        direction = "HIGH ↑" if latest_row.value > latest_row.ref_range_high else "LOW ↓"
+    elif is_flagged and latest_row.ref_range_low is not None:
+        direction = "LOW ↓" if latest_row.value < latest_row.ref_range_low else "HIGH ↑"
+    else:
+        direction = "OUT OF RANGE"
+
+    # Trend calculation
+    if len(values) == 1:
+        history = f"{values[0]} {unit}"
+        trend   = "single reading"
+    else:
+        history   = " → ".join(str(v) for v in values) + f" {unit}"
+        first, last_val = values[0], values[-1]
+        pct = (last_val - first) / abs(first) * 100 if first != 0 else 0
+        if pct > 10:
+            trend = f"↑ rising +{pct:.0f}% over {len(values)} tests"
+        elif pct < -10:
+            trend = f"↓ falling {abs(pct):.0f}% over {len(values)} tests"
+        else:
+            trend = "→ stable"
+
+    ref = ""
+    if latest_row.ref_range_low is not None and latest_row.ref_range_high is not None:
+        ref = f" (ref: {latest_row.ref_range_low}–{latest_row.ref_range_high} {unit})"
+
+    line = (
+        f"  {latest_row.raw_name} ({test_name}): {history}{ref} "
+        f"[{trend}] — latest {dates[-1]}"
+    )
+    if is_flagged:
+        line = f"  ⚠ {line} [{direction}]"
+    return LabRow(test_name, str(latest_row.raw_name), line, bool(is_flagged), "rising" in trend)
+
+
+def select_lab_tests(rows: list[LabRow], asked: list[str], include_risk: bool) -> LabSelection:
+    """Choose the lab rows for the prompt (ADR 0012).
+
+    The tests the question names are shown in full, wherever they are, and so
+    is every flagged test. Risk-score labs and rising trends are added when
+    the question names no test, or is about risk. Every other test is listed
+    by name only, so the model does not report it as missing.
+
+    Args:
+        rows: One row per test the user has results for.
+        asked: Lab keys named in the question, in order.
+        include_risk: The question is about risk scores.
+
+    Returns:
+        The selection, with asked-about tests that have no result in ``missing``.
+    """
+    by_name = {row.test_name: row for row in rows}
+    selection = LabSelection(
+        asked=[by_name[key] for key in asked if key in by_name],
+        missing=[key for key in asked if key not in by_name],
+    )
+    shown = {row.test_name for row in selection.asked}
+    wants_key = include_risk or not asked
+    for row in rows:
+        if row.test_name in shown or row.test_name not in RELEVANT_LAB_TESTS:
+            continue
+        if row.flagged:
+            selection.flagged.append(row)
+        elif wants_key and (row.test_name in RISK_SCORE_LABS or row.rising):
+            selection.key.append(row)
+        else:
+            selection.names_only.append(row)
+    return selection
+
+
+def format_lab_selection(selection: LabSelection) -> str:
+    """Render a lab selection as the prompt's lab block."""
+    sections = [
+        ("=== Asked about ===", [row.line for row in selection.asked]),
+        ("=== Flagged lab values ===", [row.line for row in selection.flagged]),
+        ("=== Key risk score values and notable trends ===", [row.line for row in selection.key]),
+    ]
+    blocks = ["\n".join([title, *lines]) for title, lines in sections if lines]
+    if selection.names_only:
+        names = ", ".join(row.raw_name for row in selection.names_only)
+        blocks.append(f"Other tests on record, within range (values not shown): {names}")
+    if selection.missing:
+        names = ", ".join(key.replace("_", " ") for key in selection.missing)
+        blocks.append(f"Asked about, not on record: {names}")
+    return "\n\n".join(blocks)
+
+
+async def _build_lab_trends_summary(db: AsyncSession, message: str, include_risk: bool) -> str:
+    """Build the lab block for one question: asked-about and flagged tests.
 
     Args:
         db: Async database session.
+        message: The user's chat message; the tests it names are shown in full.
+        include_risk: Also show the risk-score labs.
 
     Returns:
-        A formatted multi-line string summary of lab results and trends.
+        A formatted multi-line string of lab results and trends.
     """
-    lines = []
     try:
         result = await db.execute(
             select(LabResult)
             .where(LabResult.test_date.isnot(None))
             .order_by(LabResult.test_name, LabResult.test_date)
         )
-        all_labs = result.scalars().all()
-        if not all_labs:
-            return "No lab results on record."
-
         by_test: dict[str, list[LabResult]] = defaultdict(list)
-        for r in all_labs:
+        for r in result.scalars().all():
             by_test[r.test_name].append(r)
-
-
-        flagged_lines = []
-        trend_lines   = []
-        stable_lines  = []
-
-        for test_name, readings in sorted(by_test.items()):
-            if test_name not in RELEVANT_LAB_TESTS:
-                continue
-
-            readings    = sorted(readings, key=lambda r: r.test_date or date.min)
-            values      = [r.value for r in readings if r.value is not None]
-            dates       = [r.test_date for r in readings if r.value is not None]
-            if not values:
-                continue
-
-            latest_row  = readings[-1]
-            unit        = latest_row.unit or ""
-            raw_name    = latest_row.raw_name
-            latest_date = dates[-1]
-            is_flagged  = latest_row.is_flagged or False
-
-            # Derive HIGH/LOW from ref range (no flag_direction column)
-            if is_flagged and latest_row.ref_range_high is not None:
-                direction = "HIGH ↑" if latest_row.value > latest_row.ref_range_high else "LOW ↓"
-            elif is_flagged and latest_row.ref_range_low is not None:
-                direction = "LOW ↓" if latest_row.value < latest_row.ref_range_low else "HIGH ↑"
-            else:
-                direction = "OUT OF RANGE"
-
-            # Trend calculation
-            if len(values) == 1:
-                history = f"{values[0]} {unit}"
-                trend   = "single reading"
-            else:
-                history   = " → ".join(str(v) for v in values) + f" {unit}"
-                first, last_val = values[0], values[-1]
-                pct = (last_val - first) / abs(first) * 100 if first != 0 else 0
-                if pct > 10:
-                    trend = f"↑ rising +{pct:.0f}% over {len(values)} tests"
-                elif pct < -10:
-                    trend = f"↓ falling {abs(pct):.0f}% over {len(values)} tests"
-                else:
-                    trend = "→ stable"
-
-            ref = ""
-            if latest_row.ref_range_low is not None and latest_row.ref_range_high is not None:
-                ref = f" (ref: {latest_row.ref_range_low}–{latest_row.ref_range_high} {unit})"
-
-            line = (
-                f"  {raw_name} ({test_name}): {history}{ref} "
-                f"[{trend}] — latest {latest_date}"
-            )
-
-            if is_flagged:
-                flagged_lines.append(f"  ⚠ {line} [{direction}]")
-            elif test_name in RISK_SCORE_LABS or "rising" in trend:
-                trend_lines.append(line)
-            else:
-                stable_lines.append(line)
-
-        if flagged_lines:
-            lines.append("=== Flagged lab values ===")
-            lines.extend(flagged_lines)
-        if trend_lines:
-            lines.append("\n=== Key risk score values and notable trends ===")
-            lines.extend(trend_lines)
-        if stable_lines:
-            lines.append("\n=== Stable lab values ===")
-            lines.extend(stable_lines)
-
+        rows = [row for name, readings in sorted(by_test.items())
+                if (row := _lab_row(name, readings)) is not None]
+        if not rows:
+            return "No lab results on record."
+        text = format_lab_selection(
+            select_lab_tests(rows, mentioned_keys(message), include_risk)
+        )
     except Exception as e:
-        lines.append(f"(Error fetching lab trends: {e})")
+        text = f"(Error fetching lab trends: {e})"
 
-    return "\n".join(lines) if lines else "No lab results on record."
+    return text or "No lab results on record."
 
 
 async def _build_bp_summary(db: AsyncSession) -> str:
@@ -830,7 +892,9 @@ async def chat(
 
     lab_summary = ""
     if "labs" in intents:
-        lab_summary = await _build_lab_trends_summary(db)
+        lab_summary = await _build_lab_trends_summary(
+            db, request.message, "risk" in intents
+        )
 
     # MedlinePlus reference texts for the labs discussed and the family
     # conditions — cache only, no network call (services.medlineplus_context).
