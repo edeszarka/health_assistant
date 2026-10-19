@@ -335,6 +335,14 @@ first (`PUT /risk/inputs`), then a new blood pressure reading (`POST /bp/`). If
 the second call fails, the first is kept and an error is shown. Stale values
 are marked in the chat reply, not in the form's captions.
 
+**Long chats forget their oldest turns**: the model gets the system prompt
+(about 2.3-3k tokens), the question and as many recent turns as fit an
+8192-token window with 512 tokens kept for the reply. Older turns are dropped
+for the model but still shown in the chat, without a notice. Token counts are
+estimated from characters (2.5 characters per token, measured on this app's
+prompts with qwen2.5:1.5b), so another model may need a new measurement. Error
+messages shown in the chat are never sent back to the model.
+
 **MedlinePlus text is English and cached**: MedlinePlus offers English (and
 Spanish) only, so the model paraphrases the reference text in Hungarian; a small
 model may do this imperfectly, and the source link points to the original. The
