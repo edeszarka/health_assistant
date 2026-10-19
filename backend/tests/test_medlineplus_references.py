@@ -124,10 +124,10 @@ def test_common_english_words_do_not_select_labs():
     assert mentioned_keys("We got the results") == []
 
 
-def test_choose_keys_orders_mentioned_before_flagged_and_caps():
+def test_choose_keys_orders_mentioned_before_flagged():
     user = {"ggt", "alt", "ast", "glucose", "wbc"}
     chosen = choose_keys(["glucose"], user, ["alt", "ast", "wbc"])
-    assert chosen == ["glucose", "alt", "ast"][:MAX_REFERENCES]
+    assert chosen == ["glucose", "alt", "ast", "wbc"]
 
 
 def test_choose_keys_skips_labs_the_user_does_not_have_and_duplicate_codes():
@@ -246,3 +246,78 @@ def test_classify_results():
     assert warm_medlineplus.classify({"url": None}) == "failed"
     assert warm_medlineplus.classify({"url": "u", "summary": ""}) == "empty"
     assert warm_medlineplus.classify({"url": "u", "summary": "s"}) == "found"
+
+
+# ── Branch 2: one reference per page, sentence trim, family conditions ───────
+
+@pytest.mark.asyncio
+async def test_lab_references_list_each_page_once():
+    """Codes sharing a MedlinePlus page (e.g. HDL and LDL) give one reference."""
+    rows = MagicMock()
+    rows.fetchall.return_value = [
+        ("hdl_cholesterol", True, date(2026, 1, 1)),
+        ("ldl_cholesterol", True, date(2026, 1, 1)),
+        ("ggt", True, date(2026, 1, 1)),
+    ]
+    db = AsyncMock()
+    db.execute.return_value = rows
+
+    async def cached(key, _db):
+        page = "cholesterol" if key in ("loinc:2085-9", "loinc:13457-7") else "ggt"
+        return {"title": page, "summary": f"About {page}.", "url": f"https://m/{page}"}
+
+    with patch.object(medlineplus_context.medlineplus_service, "get_cached", side_effect=cached):
+        refs = await lab_references("What do my results mean?", db)
+
+    assert [ref.url for ref in refs] == ["https://m/ggt", "https://m/cholesterol"]
+
+
+def test_trim_to_sentence_drops_the_cut_off_tail():
+    from services.medlineplus_context import trim_to_sentence
+    assert trim_to_sentence("A test measures GGT. It shows liver dama") == "A test measures GGT."
+    assert trim_to_sentence("no sentence end") == "no sentence end"
+
+
+def test_merge_references_deduplicates_and_caps():
+    from services.medlineplus_context import merge_references
+    a, b, c, d = (Reference(t, "s.", f"u{t}") for t in "abcd")
+    merged = merge_references([a, b], [b, c, d])
+    assert [ref.url for ref in merged] == ["ua", "ub", "uc"][:MAX_REFERENCES]
+
+
+@pytest.mark.asyncio
+async def test_family_references_read_only_the_cache():
+    from services.medlineplus_context import family_references
+    rows = MagicMock()
+    rows.fetchall.return_value = [("E11",), ("I10",)]
+    db = AsyncMock()
+    db.execute.return_value = rows
+    info = {"title": "Diabetes Type 2", "summary": "Blood sugar is too high. And", "url": "https://m/dm2"}
+    with patch.object(medlineplus_context.medlineplus_service, "get_cached",
+                      AsyncMock(side_effect=[info, None])) as get_cached, \
+         patch.object(medlineplus_context.medlineplus_service, "get_connect_info", AsyncMock()) as fetch:
+        refs = await family_references(db)
+
+    fetch.assert_not_called()
+    assert [call.args[0] for call in get_cached.await_args_list] == ["icd10:E11", "icd10:I10"]
+    assert refs == [Reference("Diabetes Type 2", "Blood sugar is too high.", "https://m/dm2")]
+
+
+@pytest.mark.asyncio
+async def test_family_question_adds_family_references_only():
+    """Family references are looked up for family questions, not for others."""
+    family_ref = [Reference("Diabetes Type 2", "s.", "https://m/dm2")]
+    profile = MagicMock()
+    profile.scalar_one_or_none.return_value = None
+    db = AsyncMock()
+    db.execute.return_value = profile
+    with patch.object(chat_router, "family_references", AsyncMock(return_value=family_ref)) as fam, \
+         patch.object(chat_router, "lab_references", AsyncMock(return_value=[])), \
+         patch.object(chat_router.rag_service, "build_context", AsyncMock(return_value="")), \
+         patch.object(chat_router.llm_service, "chat", AsyncMock(return_value="ok")):
+        family = await chat(request=ChatRequest(message="Is diabetes in my family hereditary?"), db=db)
+        labs = await chat(request=ChatRequest(message="What is my GGT?"), db=db)
+
+    assert family.sources == ["https://m/dm2"]
+    assert labs.sources == []
+    fam.assert_called_once()

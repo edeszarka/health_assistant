@@ -5,7 +5,7 @@ import logging
 import re
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -26,7 +26,13 @@ from services.llm_service import llm_service
 from services.risk_engine import risk_engine
 from services.risk_inputs import WAIST_METRIC, collect_inputs, latest_metric
 from services.risk_inputs_text import format_risk_inputs
-from services.medlineplus_context import Reference, format_references, lab_references
+from services.medlineplus_context import (
+    Reference,
+    family_references,
+    format_references,
+    lab_references,
+    merge_references,
+)
 from services.risk_score_service import (
     activity_minutes,
     compute_baseline_scores,
@@ -754,10 +760,10 @@ async def _risk_data_request(db: AsyncSession, user_language: str) -> ChatRespon
     )
 
 
-async def _lab_references(message: str, db: AsyncSession) -> list[Reference]:
-    """Return cached MedlinePlus texts for the message; none if reading fails."""
+async def _references(lookup: Awaitable[list[Reference]]) -> list[Reference]:
+    """Await a cached MedlinePlus lookup; none (logged) if reading fails."""
     try:
-        return await lab_references(message, db)
+        return await lookup
     except Exception as exc:
         logger.warning("MedlinePlus reference lookup failed: %s", exc)
         return []
@@ -824,11 +830,15 @@ async def chat(
     if "labs" in intents:
         lab_summary = await _build_lab_trends_summary(db)
 
-    # MedlinePlus reference texts for the labs discussed — cache only, no
-    # network call (see services.medlineplus_context).
-    references: list[Reference] = []
+    # MedlinePlus reference texts for the labs discussed and the family
+    # conditions — cache only, no network call (services.medlineplus_context).
+    lab_refs: list[Reference] = []
+    family_refs: list[Reference] = []
     if "labs" in intents:
-        references = await _lab_references(request.message, db)
+        lab_refs = await _references(lab_references(request.message, db))
+    if "family" in intents:
+        family_refs = await _references(family_references(db))
+    references = merge_references(lab_refs, family_refs)
 
     bp_summary = ""
     if "bp" in intents:
