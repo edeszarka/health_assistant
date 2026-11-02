@@ -730,12 +730,11 @@ async def _build_risk_scores(
                 fram_overrides["systolic_bp"] = int(val)
                 fram_labels.append(f"systolic_bp={val}")
 
-            if fram_labels and profile and not risk_engine.framingham_supported(
-                profile.sex
-            ):
-                scores["framingham_hypothetical"] = (
-                    "Not available: " + risk_engine.FRAMINGHAM_UNSUPPORTED_REASON + "."
-                )
+            unavailable = profile and risk_engine.framingham_unavailable_reason(
+                profile.sex, bool(getattr(profile, "diabetes_diagnosed", False)), profile.age
+            )
+            if fram_labels and unavailable:
+                scores["framingham_hypothetical"] = f"Not available: {unavailable}."
             elif fram_labels and profile:
                 # Fallback lab values are converted from each row's own unit;
                 # a row whose unit cannot be converted is reported explicitly
@@ -765,7 +764,6 @@ async def _build_risk_scores(
                         hdl_cholesterol=hdl,
                         systolic_bp=sys_bp,
                         bp_treated=getattr(profile, "bp_medication_current", False),
-                        diabetes=getattr(profile, "diabetes_diagnosed", False),
                         smoker=getattr(profile, "smoking", False),
                     )
                     scores["framingham_hypothetical"] = (

@@ -152,16 +152,15 @@ def _compute_framingham(
     if missing:
         logger.warning("Framingham skipped: missing %s.", ", ".join(missing))
         return None
-    if not risk_engine.framingham_supported(profile.sex):
-        logger.warning(
-            "Framingham skipped: %s.", risk_engine.FRAMINGHAM_UNSUPPORTED_REASON
-        )
+    diabetes = bool(getattr(profile, "diabetes_diagnosed", False))
+    reason = risk_engine.framingham_unavailable_reason(profile.sex, diabetes, profile.age)
+    if reason:
+        logger.warning("Framingham skipped: %s.", reason)
         return None
 
     tc_value, tc_unit = total_cholesterol
     hdl_value, hdl_unit = hdl_cholesterol
     bp_treated = bool(getattr(profile, "bp_medication_current", False))
-    diabetes = bool(getattr(profile, "diabetes_diagnosed", False))
     smoker = bool(getattr(profile, "smoking", False))
     result = risk_engine.calculate_framingham(
         age=profile.age,
@@ -170,7 +169,6 @@ def _compute_framingham(
         hdl_cholesterol=hdl_value,
         systolic_bp=systolic_bp,
         bp_treated=bp_treated,
-        diabetes=diabetes,
         smoker=smoker,
     )
     return {
@@ -186,7 +184,6 @@ def _compute_framingham(
             "hdl_cholesterol_source_unit": hdl_unit,
             "systolic_bp": systolic_bp,
             "bp_treated": bp_treated,
-            "diabetes": diabetes,
             "smoker": smoker,
         },
     }

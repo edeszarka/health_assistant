@@ -215,8 +215,10 @@ async def collect_inputs(db: AsyncSession) -> RiskInputsStatus:
         framingham_missing=[],
     )
     status.findrisc_missing, status.framingham_missing = missing_inputs(status)
-    if profile is not None and not risk_engine.framingham_supported(str(profile.sex)):
-        status.framingham_unavailable = risk_engine.FRAMINGHAM_UNSUPPORTED_REASON
+    if profile is not None:
+        status.framingham_unavailable = risk_engine.framingham_unavailable_reason(
+            str(profile.sex), bool(profile.diabetes_diagnosed), profile.age
+        )
     return status
 
 

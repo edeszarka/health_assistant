@@ -1,7 +1,7 @@
 """Explicit lab unit conversion for values consumed by the risk engine.
 
 Hungarian lab reports commonly store lipids and glucose in mmol/L while the
-Framingham point tables (Wilson et al. 1998) expect mg/dL. This module makes
+Framingham point tables (NCEP ATP III) expect mg/dL. This module makes
 that conversion explicit; it never guesses a unit.
 """
 

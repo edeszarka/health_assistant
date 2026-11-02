@@ -109,7 +109,7 @@ async def test_hypothetical_scores_are_never_persisted():
 
 @pytest.mark.asyncio
 async def test_hypothetical_framingham_withheld_for_female_profile():
-    """A female profile gets an explicit 'not available', never a placeholder score."""
+    """A female profile gets an explicit 'not available', never a score."""
     db = AsyncMock()
     db.execute.side_effect = [_scalar(None)]  # _get_latest_weight only
 
@@ -122,6 +122,25 @@ async def test_hypothetical_framingham_withheld_for_female_profile():
 
     line = scores.get("framingham_hypothetical", "")
     assert line.startswith("Not available")
+    assert "% 10-yr CV risk" not in line
+
+
+@pytest.mark.asyncio
+async def test_hypothetical_framingham_withheld_for_diagnosed_diabetes():
+    """A diabetic profile gets an explicit 'not available', never a score."""
+    db = AsyncMock()
+    db.execute.side_effect = [_scalar(None)]  # _get_latest_weight only
+
+    profile = _profile()
+    profile.diabetes_diagnosed = True
+    with patch(
+        "routers.chat.compute_baseline_scores", new=AsyncMock(return_value={})
+    ):
+        scores = await _build_risk_scores(db, profile, "what if my systolic is 150")
+
+    line = scores.get("framingham_hypothetical", "")
+    assert line.startswith("Not available")
+    assert "diabetes" in line
     assert "% 10-yr CV risk" not in line
 
 

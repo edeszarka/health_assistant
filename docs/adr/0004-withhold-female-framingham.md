@@ -1,6 +1,6 @@
 # 0004. Withhold Framingham for women until the table is validated
 
-- **Status:** Accepted
+- **Status:** Superseded by [0013](0013-framingham-atp3-male-only.md)
 - **Date:** 2026-10-14 (#36, `c860181`)
 - **Evidence:** `backend/services/risk_engine.py` (`_FRAMINGHAM_RISK_FEMALE`,
   `framingham_supported`), ARCHITECTURE invariant 8, README Known Limitations

@@ -118,7 +118,7 @@ embedding, so chat retrieval no longer returns it
    [ADR 0012](docs/adr/0012-lab-context-asked-and-flagged.md)).
 3. Risk scores: baseline scores are computed and persisted by
    `compute_baseline_scores`; hypothetical ("what if") scores are computed in
-   memory (`backend/routers/chat.py:651,658-792`).
+   memory (`backend/routers/chat.py:651,658-790`).
 4. RAG: the message is embedded with nomic's `search_query: ` prefix (stored
    texts use `search_document: `; `backend/services/rag_service.py:29`) and the
    nearest `embeddings` rows by cosine distance are retrieved, with no
@@ -247,7 +247,7 @@ Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-w
 [0001](docs/adr/0001-local-only-llm-and-embeddings.md),
 [0007](docs/adr/0007-medlineplus-cache-only.md); 5 →
 [0007](docs/adr/0007-medlineplus-cache-only.md); 8 →
-[0004](docs/adr/0004-withhold-female-framingham.md).
+[0013](docs/adr/0013-framingham-atp3-male-only.md).
 
 ### (a) Enforced today
 
@@ -260,20 +260,20 @@ Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-w
    fallback uses the same converter (`backend/routers/chat.py:614-619`).
    FINDRISC is likewise skipped without age, male/female sex, BMI (weight
    and height) or waist circumference, instead of scoring them as 0 points
-   (`backend/services/risk_score_service.py:67-94,195-206`); a "what if"
+   (`backend/services/risk_score_service.py:67-94,192-203`); a "what if"
    question names the missing input (`backend/routers/chat.py:684-694`).
    Exception: cholesterol values typed into a "what if" question carry no unit
    and are read as mg/dL (`backend/routers/chat.py:717-726`); values in the
    mmol/L range are rejected by the plausibility guard
-   (`backend/services/risk_engine.py:171-182`), the error is logged and no
-   hypothetical score is shown (`backend/routers/chat.py:790-791`).
+   (`backend/services/risk_engine.py:166-177`), the error is logged and no
+   hypothetical score is shown (`backend/routers/chat.py:788-789`).
 
 2. **Hypothetical ("what if") recalculations are never persisted.**
    The hypothetical branch only reads from the database
    (`backend/routers/chat.py:605,624,634,687`) and returns its results in memory
-   (`backend/routers/chat.py:658-792`); only baseline scores are persisted, via
+   (`backend/routers/chat.py:658-790`); only baseline scores are persisted, via
    `compute_baseline_scores` (`backend/routers/chat.py:651`,
-   `backend/services/risk_score_service.py:311-338`). Locked by
+   `backend/services/risk_score_service.py:308-335`). Locked by
    `test_hypothetical_scores_are_never_persisted`
    (`backend/tests/test_chat_hypothetical.py`).
 
@@ -327,13 +327,16 @@ Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-w
    on the network away from the data.
 
 8. **Risk scores that cannot be computed correctly are not shown.**
-   The female Framingham points-to-risk table is a placeholder copy of the
-   male table (`backend/services/risk_engine.py:107-114`).
-   `framingham_supported` allows only the validated male table
-   (`backend/services/risk_engine.py:122-136`); otherwise no baseline score is
-   computed or saved (`backend/services/risk_score_service.py:155-159`) and a
+   Framingham uses the NCEP ATP III point table for men aged 20-79.
+   `framingham_unavailable_reason` gives the reason for women, for diagnosed
+   diabetes (a CHD risk equivalent, not a point item) and for other ages
+   (`backend/services/risk_engine.py:105-129`). Then no baseline score is
+   computed or saved (`backend/services/risk_score_service.py:155-159`), the
+   risk form shows the reason (`backend/services/risk_inputs.py:218-221`), and a
    "what if" question gets an explicit "Not available" instead of a number
-   (`backend/routers/chat.py:733-738`).
+   (`backend/routers/chat.py:733-737`). `calculate_framingham` itself refuses
+   another sex or age. Table values are locked by
+   `backend/tests/test_risk_published_tables.py`.
 
 ### (b) Targets — NOT yet implemented
 

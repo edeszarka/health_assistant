@@ -18,7 +18,7 @@ Status values: **Proposed** (open, needs the owner's decision), **Accepted**,
 | [0001](0001-local-only-llm-and-embeddings.md) | Run the LLM and the embeddings locally; health data never leaves the host | Accepted | 2026-03-05 |
 | [0002](0002-lab-parsing-without-llm.md) | Parse lab reports with rules and a dictionary, not with an LLM | Accepted | 2026-03-11 |
 | [0003](0003-hypothetical-scores-never-persisted.md) | Never persist hypothetical ("what if") risk scores | Accepted | 2026-09-19 |
-| [0004](0004-withhold-female-framingham.md) | Withhold Framingham for women until the table is validated | Accepted | 2026-10-14 |
+| [0004](0004-withhold-female-framingham.md) | Withhold Framingham for women until the table is validated | Superseded by 0013 | 2026-10-14 |
 | [0005](0005-rag-operating-point-by-eval.md) | Set the RAG operating point by a retrieval eval (top-1, ≥ 0.62) | Accepted | 2026-10-17 |
 | [0006](0006-profile-model-and-in-chat-input.md) | Profile model and collecting risk inputs through an in-chat form | Accepted | 2026-10-19 |
 | [0007](0007-medlineplus-cache-only.md) | Use MedlinePlus in the chat from the cache only, prefetched for a fixed list | Accepted | 2026-10-19 |
@@ -27,6 +27,7 @@ Status values: **Proposed** (open, needs the owner's decision), **Accepted**,
 | [0010](0010-chat-model-choice.md) | Use qwen2.5:3b as the default chat model | Accepted | 2026-10-19 |
 | [0011](0011-unimported-stored-pdfs.md) | What to do with stored PDFs that were never imported | Proposed | 2026-10-19 |
 | [0012](0012-lab-context-asked-and-flagged.md) | Put only the asked-about and flagged lab results into the prompt | Accepted | 2026-10-19 |
+| [0013](0013-framingham-atp3-male-only.md) | Score Framingham with the ATP III male table only, and withhold it for diabetes | Accepted | 2026-11-02 |
 
 New records start from [template.md](template.md). Write one when a change
 chooses between real alternatives; small fixes do not need one.
