@@ -47,7 +47,7 @@
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
-- 🎯 **Risk Scores** – Framingham 10-year CV risk, FINDRISC diabetes risk
+- 🎯 **Risk Scores** – Framingham 10-year CHD risk (men aged 20-79 without diabetes), FINDRISC diabetes risk
 - 🔒 **Privacy-first** – Your health records stay local; only MedlinePlus (NIH public API) is called externally, with lookup terms only (see [Data Privacy](#data-privacy))
 
 ---
@@ -350,11 +350,12 @@ is supported for total cholesterol, LDL, HDL, triglycerides and glucose. A value
 with a missing or unrecognised unit is skipped rather than assumed, so a risk
 score may be unavailable instead of wrong.
 
-**Female Framingham table is a placeholder**: `_FRAMINGHAM_RISK_FEMALE` in
-`backend/services/risk_engine.py` is currently a copy of the male
-points-to-risk table. Until it is replaced with the published Wilson et al. 1998
-women's table, no Framingham score is shown or saved for women (FINDRISC is
-unaffected).
+**Framingham covers men aged 20-79 without diabetes**: the score uses the NCEP
+ATP III point table for men. No score is shown or saved for women, because no
+women's table is implemented; for diagnosed diabetes, which ATP III treats as a
+coronary heart disease risk equivalent rather than a point item; or outside ages
+20-79. The reply gives the reason instead. FINDRISC is unaffected. See
+[ADR 0013](docs/adr/0013-framingham-atp3-male-only.md).
 
 **Risk scores need a complete profile**: FINDRISC and Framingham run only when
 every input is stored (profile answers from the chat risk form, a weight and
