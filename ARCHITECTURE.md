@@ -124,10 +124,11 @@ embedding, so chat retrieval no longer returns it
    nearest `embeddings` rows by cosine distance are retrieved, with no
    source-type filter (`backend/services/rag_service.py:135,180`). Operating
    point: top `rag_top_k` = 1 row with similarity >= 0.62
-   (`backend/config.py:24-25`), chosen with the retrieval eval
-   (`python -m eval.retrieval_eval`): recall 85% (HU 70%, EN 100%) at 85%
-   precision on 20 HU/EN questions, and none of 5 off-topic questions retrieves
-   a row (measured on 42 stored records after the lab re-import). Re-run the eval and `python -m scripts.reembed` after changing the
+   (`backend/config.py:36-37`), chosen with the retrieval eval
+   (`python -m eval.retrieval_eval`): 17 of 20 HU/EN questions retrieve a relevant
+   row (HU 7 of 10, EN 10 of 10), and none of 5 off-topic questions retrieves a
+   row (measured on 42 stored records; `backend/eval/results/retrieval_2026-11-02.txt`).
+   Re-run the eval and `python -m scripts.reembed` after changing the
    model or the texts.
 5. MedlinePlus references: for the labs intent, lab-test texts for labs the
    user has results for (first those named in the message, then flagged
