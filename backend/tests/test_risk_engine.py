@@ -19,7 +19,7 @@ def test_framingham_low_risk_male(engine):
         age=35, sex="male",
         total_cholesterol=180, hdl_cholesterol=55,
         systolic_bp=115, bp_treated=False,
-        diabetes=False, smoker=False,
+        smoker=False,
     )
     assert result["risk_percent"] < 10
     assert result["risk_category"] == "Low (<10%)"
@@ -31,18 +31,19 @@ def test_framingham_high_risk_male(engine):
         age=62, sex="male",
         total_cholesterol=270, hdl_cholesterol=35,
         systolic_bp=155, bp_treated=True,
-        diabetes=True, smoker=True,
+        smoker=True,
     )
-    assert result["risk_percent"] >= 20
-    assert result["risk_category"] == "High (>20%)"
+    assert result["score_points"] == 17  # 10 age + 2 chol. + 2 HDL + 2 BP + 1 smoker
+    assert result["risk_percent"] == 30.0
+    assert result["risk_category"] == "High (30% or more)"
 
 
 def test_framingham_returns_required_keys(engine):
     result = engine.calculate_framingham(
-        age=50, sex="female",
+        age=50, sex="male",
         total_cholesterol=210, hdl_cholesterol=50,
         systolic_bp=130, bp_treated=False,
-        diabetes=False, smoker=False,
+        smoker=False,
     )
     assert {"score_points", "risk_percent", "risk_category"} == set(result.keys())
 
@@ -54,7 +55,7 @@ def test_framingham_rejects_mmol_l_total_cholesterol(engine):
             age=50, sex="male",
             total_cholesterol=5.2, hdl_cholesterol=50,
             systolic_bp=120, bp_treated=False,
-            diabetes=False, smoker=False,
+            smoker=False,
         )
 
 
@@ -65,7 +66,7 @@ def test_framingham_rejects_mmol_l_hdl(engine):
             age=50, sex="male",
             total_cholesterol=200, hdl_cholesterol=1.3,
             systolic_bp=120, bp_treated=False,
-            diabetes=False, smoker=False,
+            smoker=False,
         )
 
 
@@ -167,12 +168,3 @@ def test_bp_high_systolic_with_low_diastolic_is_not_stage_1(engine):
     """Regression: a low diastolic must not downgrade a severe systolic value."""
     assert engine.classify_blood_pressure(185, 85)["category"] == "Hypertensive Crisis"
     assert engine.classify_blood_pressure(160, 85)["category"] == "Stage 2 Hypertension"
-
-
-@pytest.mark.parametrize(
-    ("sex", "supported"),
-    [("male", True), ("Male", True), ("female", False), (None, False), ("", False)],
-)
-def test_framingham_supported_only_for_validated_male_table(engine, sex, supported):
-    """Only the male table is validated; everything else must be withheld."""
-    assert engine.framingham_supported(sex) is supported

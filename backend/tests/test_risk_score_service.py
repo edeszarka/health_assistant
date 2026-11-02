@@ -184,8 +184,8 @@ async def test_findrisc_uses_profile_answers():
 
 
 @pytest.mark.asyncio
-async def test_framingham_uses_current_medication_and_diagnosed_diabetes():
-    """Framingham reads 'currently treated' and 'diagnosed diabetes' only."""
+async def test_framingham_uses_current_medication_only():
+    """Framingham reads 'currently treated', not 'ever treated'."""
     db = _db()
     await compute_baseline_scores(db, _profile(
         bp_medication_ever=True, high_glucose_history=True,
@@ -193,17 +193,39 @@ async def test_framingham_uses_current_medication_and_diagnosed_diabetes():
     inputs = next(row for row in _added(db) if row.score_type == "framingham").inputs_json
 
     assert '"bp_treated": false' in inputs
-    assert '"diabetes": false' in inputs
 
     db = _db()
     await compute_baseline_scores(db, _profile(
-        bp_medication_ever=True, bp_medication_current=True,
-        high_glucose_history=True, diabetes_diagnosed=True,
+        bp_medication_ever=True, bp_medication_current=True, high_glucose_history=True,
     ))
     inputs = next(row for row in _added(db) if row.score_type == "framingham").inputs_json
 
     assert '"bp_treated": true' in inputs
-    assert '"diabetes": true' in inputs
+
+
+@pytest.mark.asyncio
+async def test_diagnosed_diabetes_gets_no_framingham_score():
+    """Diabetes is a CHD risk equivalent, so no score is shown or saved."""
+    db = _db()
+
+    result = await compute_baseline_scores(db, _profile(
+        high_glucose_history=True, diabetes_diagnosed=True,
+    ))
+
+    assert result["framingham_risk_percent"] is None
+    assert result["findrisc_score"] is not None
+    assert all(row.score_type != "framingham" for row in _added(db))
+
+
+@pytest.mark.parametrize("age", [19, 80])
+@pytest.mark.asyncio
+async def test_age_outside_table_gets_no_framingham_score(age):
+    db = _db()
+
+    result = await compute_baseline_scores(db, _profile(age=age))
+
+    assert result["framingham_risk_percent"] is None
+    assert all(row.score_type != "framingham" for row in _added(db))
 
 
 @pytest.mark.asyncio
@@ -245,7 +267,7 @@ async def test_no_profile_returns_nones_without_writes():
 
 @pytest.mark.asyncio
 async def test_female_profile_gets_no_framingham_score():
-    """The female Framingham table is a placeholder, so no score is shown or saved."""
+    """The Framingham table is implemented for men only; no score is shown or saved."""
     db = _db()
 
     result = await compute_baseline_scores(db, _profile(sex="female"))

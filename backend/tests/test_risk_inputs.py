@@ -157,6 +157,14 @@ async def test_female_profile_marks_framingham_unavailable():
     assert status.framingham_unavailable is not None
 
 
+@pytest.mark.asyncio
+async def test_diagnosed_diabetes_marks_framingham_unavailable():
+    status = await _collect(profile=UserProfile(**_profile_data(
+        high_glucose_history=True, diabetes_diagnosed=True,
+    )))
+    assert "diabetes" in status.framingham_unavailable
+
+
 # ── Saving ───────────────────────────────────────────────────────────────────
 
 def _session() -> AsyncMock:

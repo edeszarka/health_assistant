@@ -123,7 +123,7 @@ def test_reply_marks_framingham_unavailable_for_female_profile():
         vegetables_daily=True, physically_active=True, family_diabetes="none",
     )
     status.age = 46
-    status.framingham_unavailable = "no validated Framingham risk table for women yet"
+    status.framingham_unavailable = "the Framingham table is implemented for men only"
 
     text = format_risk_inputs(status, "Hungarian")
 

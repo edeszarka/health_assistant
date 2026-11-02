@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 # AHA 2017 blood-pressure category cut-offs in mmHg.
 # Source: Whelton et al., "2017 ACC/AHA Guideline for the Prevention, Detection,
@@ -20,11 +22,17 @@ AHA_DIASTOLIC_CRISIS = 120
 class RiskEngine:
     """Calculates cardiovascular, diabetes, and blood-pressure risk scores."""
 
-    # ── Framingham (Wilson et al. 1998) ──────────────────────────────────────
-    # Source: https://www.ahajournals.org/doi/10.1161/01.cir.97.18.1837
+    # ── Framingham ───────────────────────────────────────────────────────────
+    # NCEP ATP III point score for men (Third Report, 2001; NHLBI "Estimate of
+    # 10-Year Risk for CHD"). It estimates hard CHD for men aged 20-79. All
+    # cholesterol values are in mg/dL. Diabetes is not a point item: ATP III
+    # treats it as a CHD risk equivalent, so no score is given (see
+    # framingham_unavailable_reason).
 
-    # Point tables: age points by sex
-    _FRAMINGHAM_AGE_MALE = {
+    _FRAMINGHAM_MIN_AGE = 20
+    _FRAMINGHAM_MAX_AGE = 79
+
+    _FRAMINGHAM_AGE = {
         (20, 34): -9,
         (35, 39): -4,
         (40, 44): 0,
@@ -34,106 +42,91 @@ class RiskEngine:
         (60, 64): 10,
         (65, 69): 11,
         (70, 74): 12,
-        (75, 999): 13,
-    }
-    _FRAMINGHAM_AGE_FEMALE = {
-        (20, 34): -7,
-        (35, 39): -3,
-        (40, 44): 0,
-        (45, 49): 3,
-        (50, 54): 6,
-        (55, 59): 8,
-        (60, 64): 10,
-        (65, 69): 12,
-        (70, 74): 14,
-        (75, 999): 16,
+        (75, 79): 13,
     }
 
-    # Total cholesterol points by age group (ordered: <160, 160-199, 200-239, 240-279, ≥280)
-    _FRAMINGHAM_TC_MALE = {
-        (20, 39): [0, 4, 7, 9, 11],
-        (40, 49): [0, 3, 5, 6, 8],
-        (50, 59): [0, 2, 3, 4, 5],
-        (60, 69): [0, 1, 1, 2, 3],
-        (70, 999): [0, 0, 0, 1, 1],
-    }
-    _FRAMINGHAM_TC_FEMALE = {
-        (20, 39): [0, 4, 8, 11, 13],
-        (40, 49): [0, 3, 6, 8, 10],
-        (50, 59): [0, 2, 4, 5, 7],
-        (60, 69): [0, 1, 2, 3, 4],
-        (70, 999): [0, 1, 1, 2, 2],
+    # Lower bounds of the total cholesterol bands after the first (<160).
+    _FRAMINGHAM_TC_BANDS = (160, 200, 240, 280)
+    # Points by age group, ordered: <160, 160-199, 200-239, 240-279, >=280.
+    _FRAMINGHAM_TC = {
+        (20, 39): (0, 4, 7, 9, 11),
+        (40, 49): (0, 3, 5, 6, 8),
+        (50, 59): (0, 2, 3, 4, 5),
+        (60, 69): (0, 1, 1, 2, 3),
+        (70, 79): (0, 0, 0, 1, 1),
     }
 
-    # HDL points (≥60, 50-59, 40-49, <40)
-    _FRAMINGHAM_HDL = [(-1), 0, 1, 2]
+    # Points for a current smoker, by age group; a non-smoker gets 0.
+    _FRAMINGHAM_SMOKER = {
+        (20, 39): 8,
+        (40, 49): 5,
+        (50, 59): 3,
+        (60, 69): 1,
+        (70, 79): 1,
+    }
 
-    # Systolic Blood Pressure (SBP) points (treated vs untreated)
-    _FRAMINGHAM_SBP_MALE_UNTREATED = {
+    # HDL points as (lower bound, points), highest band first.
+    _FRAMINGHAM_HDL = ((60, -1), (50, 0), (40, 1), (0, 2))
+
+    _FRAMINGHAM_SBP_UNTREATED = {
         (0, 119): 0,
         (120, 129): 0,
         (130, 139): 1,
         (140, 159): 1,
         (160, 999): 2,
     }
-    _FRAMINGHAM_SBP_MALE_TREATED = {
+    _FRAMINGHAM_SBP_TREATED = {
         (0, 119): 0,
         (120, 129): 1,
         (130, 139): 2,
         (140, 159): 2,
         (160, 999): 3,
     }
-    _FRAMINGHAM_SBP_FEMALE_UNTREATED = {
-        (0, 119): 0,
-        (120, 129): 1,
-        (130, 139): 2,
-        (140, 159): 3,
-        (160, 999): 4,
-    }
-    _FRAMINGHAM_SBP_FEMALE_TREATED = {
-        (0, 119): 0,
-        (120, 129): 3,
-        (130, 139): 4,
-        (140, 159): 5,
-        (160, 999): 6,
-    }
 
-    # 10-year cardiovascular risk lookup (points → risk %)
-    _FRAMINGHAM_RISK_MALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
+    # Points to 10-year risk %. The table's two open-ended rows are stored as
+    # their nearest number: 0 points or fewer ("<1%") as 1, and 17 or more
+    # ("30% or more") as 30, with a category that says so.
+    _FRAMINGHAM_RISK = {
+        1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6,
+        11: 8, 12: 10, 13: 12, 14: 16, 15: 20, 16: 25,
     }
-    # CAVEAT: this is currently a copy of the male table and must be replaced
-    # with the published Wilson et al. 1998 women's table before the female
-    # score can be trusted. Documented in README Known Limitations.
-    _FRAMINGHAM_RISK_FEMALE = {
-        -3: 1, -2: 1, -1: 1, 0: 1, 1: 1, 2: 1, 3: 1, 4: 1,
-        5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6, 11: 8, 12: 10,
-        13: 12, 14: 16, 15: 20, 16: 25,
-    }
+    _FRAMINGHAM_RISK_FLOOR = 1.0
+    _FRAMINGHAM_RISK_CEILING = 30.0
+    _FRAMINGHAM_CEILING_POINTS = 17
 
-    # Shown/logged when a Framingham score is withheld; see framingham_supported.
-    FRAMINGHAM_UNSUPPORTED_REASON = (
-        "no validated Framingham risk table for women yet"
+    # Reasons shown or logged when a Framingham score is withheld.
+    FRAMINGHAM_MEN_ONLY_REASON = "the Framingham table is implemented for men only"
+    FRAMINGHAM_DIABETES_REASON = (
+        "diagnosed diabetes counts as a coronary heart disease risk equivalent, "
+        "so the Framingham table does not apply"
     )
+    FRAMINGHAM_AGE_REASON = "the Framingham table covers ages 20-79"
 
-    @staticmethod
-    def framingham_supported(sex: str | None) -> bool:
-        """Return whether a trustworthy Framingham score exists for ``sex``.
+    @classmethod
+    def framingham_unavailable_reason(
+        cls, sex: str | None, diabetes: bool, age: int | None
+    ) -> str | None:
+        """Return why no Framingham score may be given, or ``None`` if it may.
 
-        Only the male points-to-risk table is validated; the female table is a
-        placeholder copy (see ``_FRAMINGHAM_RISK_FEMALE``). Callers must not
-        show or persist a Framingham score when this returns ``False``. Uses
-        the same rule as ``calculate_framingham`` to pick the table.
+        Callers must not show or persist a Framingham score when this returns
+        a reason. An unknown age is not a reason here: it is reported as a
+        missing input.
 
         Args:
             sex: The profile's sex value, or ``None``.
+            diabetes: Whether diabetes has been diagnosed.
+            age: Age in years, or ``None`` when unknown.
 
         Returns:
-            ``True`` only when ``calculate_framingham`` would use the male table.
+            The reason as text, or ``None`` when the table applies.
         """
-        return (sex or "").lower() == "male"
+        if (sex or "").lower() != "male":
+            return cls.FRAMINGHAM_MEN_ONLY_REASON
+        if diabetes:
+            return cls.FRAMINGHAM_DIABETES_REASON
+        if age is not None and not cls._FRAMINGHAM_MIN_AGE <= age <= cls._FRAMINGHAM_MAX_AGE:
+            return cls.FRAMINGHAM_AGE_REASON
+        return None
 
     def calculate_framingham(
         self,
@@ -143,31 +136,33 @@ class RiskEngine:
         hdl_cholesterol: float,
         systolic_bp: int,
         bp_treated: bool,
-        diabetes: bool,
         smoker: bool,
     ) -> dict:
-        """Calculate 10-year cardiovascular risk using Framingham Point Score.
+        """Calculate 10-year CHD risk with the ATP III point score for men.
 
-        The point tables are the Wilson et al. 1998 mg/dL tables, so both
-        cholesterol inputs MUST be supplied in mg/dL.
+        Diabetes is not an input. Callers check diagnosed diabetes through
+        ``framingham_unavailable_reason`` before calling this.
 
         Args:
-            age: Patient age in years.
-            sex: The biological sex of the patient ("male" or "female").
+            age: Patient age in years, 20-79.
+            sex: The biological sex of the patient; only "male" is scored.
             total_cholesterol: Total cholesterol level in mg/dL (NOT mmol/L).
             hdl_cholesterol: High-density lipoprotein (HDL) cholesterol level in mg/dL (NOT mmol/L).
             systolic_bp: Systolic blood pressure reading in mmHg.
             bp_treated: True if the patient is on antihypertensive medication.
-            diabetes: True if the patient has a diagnosis of diabetes.
             smoker: True if the patient is a current smoker.
 
         Returns:
             Dict containing score_points, risk_percent, and risk_category.
 
         Raises:
-            ValueError: If a cholesterol value is below the physiological floor
-                for mg/dL, which usually means it was passed in as mmol/L.
+            ValueError: If the table does not apply to this sex or age, or a
+                cholesterol value is below the physiological floor for mg/dL,
+                which usually means it was passed in as mmol/L.
         """
+        reason = self.framingham_unavailable_reason(sex, False, age)
+        if reason:
+            raise ValueError(f"No Framingham score: {reason}.")
         # Non-physiological in mg/dL; a value this low most likely means the
         # caller supplied mmol/L. Refuse rather than produce a wrong score.
         if total_cholesterol < 50:
@@ -181,61 +176,46 @@ class RiskEngine:
                 "expected mg/dL; convert the value before scoring."
             )
 
-        is_male = sex.lower() == "male"
-        points = 0
-
-        # 1. Age points
-        age_table = self._FRAMINGHAM_AGE_MALE if is_male else self._FRAMINGHAM_AGE_FEMALE
-        points += self._lookup_range(age_table, age)
-
-        # 2. Total cholesterol points
-        tc_table = self._FRAMINGHAM_TC_MALE if is_male else self._FRAMINGHAM_TC_FEMALE
-        tc_pts_list = self._lookup_range(tc_table, age)
-        if isinstance(tc_pts_list, list):
-            if total_cholesterol < 160: tc_idx = 0
-            elif total_cholesterol < 200: tc_idx = 1
-            elif total_cholesterol < 240: tc_idx = 2
-            elif total_cholesterol < 280: tc_idx = 3
-            else: tc_idx = 4
-            points += tc_pts_list[tc_idx]
-
-        # 3. HDL points
-        if hdl_cholesterol >= 60: hdl_idx = 0
-        elif hdl_cholesterol >= 50: hdl_idx = 1
-        elif hdl_cholesterol >= 40: hdl_idx = 2
-        else: hdl_idx = 3
-        points += self._FRAMINGHAM_HDL[hdl_idx]
-
-        # 4. SBP points
-        if is_male:
-            sbp_table = self._FRAMINGHAM_SBP_MALE_TREATED if bp_treated else self._FRAMINGHAM_SBP_MALE_UNTREATED
-        else:
-            sbp_table = self._FRAMINGHAM_SBP_FEMALE_TREATED if bp_treated else self._FRAMINGHAM_SBP_FEMALE_UNTREATED
-        points += self._lookup_range(sbp_table, systolic_bp)
-
-        # 5. Smoking & Diabetes
-        if smoker:
-            points += 8 if is_male else 9
-        if diabetes:
-            points += 11 if is_male else 13
-
-        # 6. Risk lookup
-        risk_table = self._FRAMINGHAM_RISK_MALE if is_male else self._FRAMINGHAM_RISK_FEMALE
-        clamped = max(min(points, max(risk_table.keys())), min(risk_table.keys()))
-        risk_pct = float(risk_table.get(clamped, 30))
-
-        if risk_pct < 10: category = "Low (<10%)"
-        elif risk_pct <= 20: category = "Moderate (10-20%)"
-        else: category = "High (>20%)"
-
+        sbp_table = self._FRAMINGHAM_SBP_TREATED if bp_treated else self._FRAMINGHAM_SBP_UNTREATED
+        points = (
+            self._lookup_range(self._FRAMINGHAM_AGE, age)
+            + self._framingham_tc_points(age, total_cholesterol)
+            + self._framingham_hdl_points(hdl_cholesterol)
+            + self._lookup_range(sbp_table, systolic_bp)
+            + (self._lookup_range(self._FRAMINGHAM_SMOKER, age) if smoker else 0)
+        )
+        risk_percent, category = self._framingham_risk(points)
         return {
             "score_points": points,
-            "risk_percent": risk_pct,
+            "risk_percent": risk_percent,
             "risk_category": category,
         }
 
+    def _framingham_tc_points(self, age: int, total_cholesterol: float) -> int:
+        """Return the total cholesterol points for this age group."""
+        band = sum(total_cholesterol >= bound for bound in self._FRAMINGHAM_TC_BANDS)
+        return self._lookup_range(self._FRAMINGHAM_TC, age)[band]
+
+    def _framingham_hdl_points(self, hdl_cholesterol: float) -> int:
+        """Return the HDL points."""
+        return next(
+            points for bound, points in self._FRAMINGHAM_HDL if hdl_cholesterol >= bound
+        )
+
+    def _framingham_risk(self, points: int) -> tuple[float, str]:
+        """Convert total points to ``(10-year risk %, category)``."""
+        if points >= self._FRAMINGHAM_CEILING_POINTS:
+            return self._FRAMINGHAM_RISK_CEILING, "High (30% or more)"
+        risk = float(self._FRAMINGHAM_RISK.get(points, self._FRAMINGHAM_RISK_FLOOR))
+        if risk < 10:
+            return risk, "Low (<10%)"
+        if risk <= 20:
+            return risk, "Moderate (10-20%)"
+        return risk, "High (>20%)"
+
     # ── FINDRISC ─────────────────────────────────────────────────────────────
-    # Source: https://www.health.org.nz/resources/findrisc-diabetes-risk-assessment-tool
+    # Source: Lindström J, Tuomilehto J. The Diabetes Risk Score. Diabetes Care
+    # 2003;26(3):725-731. https://doi.org/10.2337/diacare.26.3.725
 
     def calculate_findrisc(
         self,
@@ -307,7 +287,7 @@ class RiskEngine:
             category, risk_pct, rec = "Slightly elevated", 4.0, "Focus on diet and physical activity."
         elif score < 15:
             category, risk_pct, rec = "Moderate", 17.0, "Consult your GP for fasting glucose or HbA1c test."
-        elif score < 20:
+        elif score <= 20:
             category, risk_pct, rec = "High", 33.0, "Refer to endocrinologist; lifestyle intervention recommended."
         else:
             category, risk_pct, rec = "Very High", 50.0, "Urgent referral to endocrinologist; high probability of existing diabetes."
@@ -376,13 +356,16 @@ class RiskEngine:
     # ── Utilities ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _lookup_range(table: dict, value: int | float) -> int | list:
-        """Return the table value whose (lo, hi) key range contains value."""
+    def _lookup_range(table: dict, value: int) -> Any:
+        """Return the table value whose (lo, hi) key range contains value.
+
+        Raises:
+            ValueError: If no range contains the value.
+        """
         for (lo, hi), pts in table.items():
             if lo <= value <= hi:
                 return pts
-        # Return last entry for out-of-range high values
-        return list(table.values())[-1]
+        raise ValueError(f"{value} is outside the table's range.")
 
 
 risk_engine = RiskEngine()
