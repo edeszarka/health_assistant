@@ -50,9 +50,14 @@ not change: "<1%" as 1, and "30% or more" as 30 with the category
 - Tests assert exact table values, not ranges. They are transcribed from the
   table and contain no published worked patient examples, so they show that the
   code matches the table, not that the score predicts risk.
-- The table values were checked against secondary reproductions, because the
-  primary source could not be reached when this was written. They need checking
-  against the NCEP ATP III report.
+- The Framingham values were compared with Table B1 of the NCEP ATP III Executive
+  Summary on 2026-11-02, and all of them match. An AI assistant (Gemini) read the
+  source for the owner, with quotes; no person checked it line by line.
+- The FINDRISC code is the later 26-point questionnaire. The same comparison showed
+  that it is not the score in Lindström & Tuomilehto 2003, which runs from 0 to 20,
+  has no family history item and has no 10-year risk bands. The 20-point fix rests
+  on secondary sources (LOINC 97064-0), and the questionnaire's own primary source
+  has not been checked.
 - Women, people with diagnosed diabetes and people outside 20-79 get no Framingham
   score. FINDRISC is unaffected by this record.
 - Existing `risk_scores` rows are not recalculated. A profile that is now withheld

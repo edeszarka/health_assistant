@@ -23,8 +23,8 @@ class RiskEngine:
     """Calculates cardiovascular, diabetes, and blood-pressure risk scores."""
 
     # ── Framingham ───────────────────────────────────────────────────────────
-    # NCEP ATP III point score for men (Third Report, 2001; NHLBI "Estimate of
-    # 10-Year Risk for CHD"). It estimates hard CHD for men aged 20-79. All
+    # NCEP ATP III point score for men (Third Report, Executive Summary, 2001,
+    # Table B1). It estimates hard CHD for men aged 20-79. All
     # cholesterol values are in mg/dL. Diabetes is not a point item: ATP III
     # treats it as a CHD risk equivalent, so no score is given (see
     # framingham_unavailable_reason).
@@ -84,10 +84,10 @@ class RiskEngine:
     }
 
     # Points to 10-year risk %. The table's two open-ended rows are stored as
-    # their nearest number: 0 points or fewer ("<1%") as 1, and 17 or more
+    # their nearest number: below 0 points ("<1%") as 1, and 17 or more
     # ("30% or more") as 30, with a category that says so.
     _FRAMINGHAM_RISK = {
-        1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6,
+        0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6,
         11: 8, 12: 10, 13: 12, 14: 16, 15: 20, 16: 25,
     }
     _FRAMINGHAM_RISK_FLOOR = 1.0
@@ -214,8 +214,10 @@ class RiskEngine:
         return risk, "High (>20%)"
 
     # ── FINDRISC ─────────────────────────────────────────────────────────────
-    # Source: Lindström J, Tuomilehto J. The Diabetes Risk Score. Diabetes Care
-    # 2003;26(3):725-731. https://doi.org/10.2337/diacare.26.3.725
+    # The 26-point FINDRISC questionnaire with family history. It builds on
+    # Lindström & Tuomilehto, Diabetes Care 2003;26(3):725-731, whose own score
+    # is 0-20, without family history. Its primary source has not been checked;
+    # the bands follow LOINC 97064-0.
 
     def calculate_findrisc(
         self,

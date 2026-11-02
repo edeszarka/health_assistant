@@ -1,14 +1,14 @@
-"""Exact checks of the risk calculators against the published point tables.
+"""Exact checks of the risk calculators against their point tables.
 
 Expected values are transcribed from the tables, not computed from the code:
 
-- Framingham, men: NCEP ATP III point score (Third Report, 2001; NHLBI "Estimate
-  of 10-Year Risk for CHD").
-- FINDRISC: Lindström J, Tuomilehto J. The Diabetes Risk Score. Diabetes Care
-  2003;26(3):725-731.
+- Framingham, men: NCEP ATP III Executive Summary (2001), Table B1, compared with
+  the primary source.
+- FINDRISC: the 26-point questionnaire with family history. Its primary source
+  has not been checked; the bands follow LOINC 97064-0. The 2003 paper
+  (Lindström & Tuomilehto) has a different, 0-20 score.
 
-These are table checks. The sources contain no worked patient examples that
-were used here.
+These are table checks. No published worked patient examples are used here.
 """
 from __future__ import annotations
 
@@ -117,7 +117,8 @@ def test_framingham_smoker_points_depend_on_age(engine, age, age_points, smoker_
 @pytest.mark.parametrize(
     ("points", "percent", "category"),
     [
-        (1, 1.0, "Low (<10%)"), (4, 1.0, "Low (<10%)"), (5, 2.0, "Low (<10%)"),
+        (0, 1.0, "Low (<10%)"), (1, 1.0, "Low (<10%)"), (4, 1.0, "Low (<10%)"),
+        (5, 2.0, "Low (<10%)"),
         (6, 2.0, "Low (<10%)"), (7, 3.0, "Low (<10%)"), (8, 4.0, "Low (<10%)"),
         (9, 5.0, "Low (<10%)"), (10, 6.0, "Low (<10%)"), (11, 8.0, "Low (<10%)"),
         (12, 10.0, "Moderate (10-20%)"), (13, 12.0, "Moderate (10-20%)"),
@@ -130,7 +131,7 @@ def test_framingham_points_to_risk(engine, points, percent, category):
     assert engine._framingham_risk(points) == (percent, category)
 
 
-@pytest.mark.parametrize("points", [0, -1, -9])
+@pytest.mark.parametrize("points", [-1, -9])
 def test_framingham_below_one_percent_is_stored_as_one(engine, points):
     """The table's "<1%" row is stored as 1, the nearest number."""
     assert engine._framingham_risk(points) == (1.0, "Low (<10%)")
