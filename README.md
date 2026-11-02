@@ -355,7 +355,9 @@ ATP III point table for men. No score is shown or saved for women, because no
 women's table is implemented; for diagnosed diabetes, which ATP III treats as a
 coronary heart disease risk equivalent rather than a point item; or outside ages
 20-79. The reply gives the reason instead. FINDRISC is unaffected. See
-[ADR 0013](docs/adr/0013-framingham-atp3-male-only.md).
+[ADR 0013](docs/adr/0013-framingham-atp3-male-only.md). Both calculators are
+tested against the published ATP III and FINDRISC point tables
+(`backend/tests/test_risk_published_tables.py`).
 
 **Risk scores need a complete profile**: FINDRISC and Framingham run only when
 every input is stored (profile answers from the chat risk form, a weight and
