@@ -92,6 +92,28 @@ long answer, or the first question after Ollama unloaded the model, still
 took 106–137 s. The owner keeps `qwen2.5:3b`: a slower answer is acceptable,
 a weaker model is not.
 
+## Re-run (2026-11-02)
+
+The results above were not kept. The same eval was run again, 3 times per case,
+with the output committed in `backend/eval/results`:
+
+| Model | English passed | Expected values | Answers with a number not in the prompt | "Not available" when data is missing | Hungarian passed |
+|---|---|---|---|---|---|
+| **qwen2.5:3b** | **44 of 48** | 48 of 48 | 2 of 48 | 46 of 48 | 7 of 12 |
+| llama3.2:3b | 44 of 48 | 48 of 48 | 4 of 48 | 48 of 48 | 5 of 12 |
+| qwen2.5:1.5b | 38 of 48 | 45 of 48 | 7 of 48 | 43 of 48 | 4 of 12 |
+
+This time the pre-agreed criterion picks `qwen2.5:3b`, by the same 2-answer margin
+that picked `llama3.2:3b` on 2026-10-19. That margin is noise: the eval separates
+`qwen2.5:1.5b` from the 3B models but not the 3B models from each other. The
+decision stands. Its reasons, the kinds of failure listed above, come from the
+earlier run and cannot be re-checked.
+
+The re-run also shows a model replacing a pre-computed number with a wrong one of
+its own: the prompt gave the rise in GGT from 38 to 71 as +87%, and one
+`qwen2.5:3b` answer called it a "144% increase". The invented-number check caught
+it. Nothing in the chat itself checks replies.
+
 ## Consequences
 
 - One model name everywhere. A local `.env` that sets `OLLAMA_MODEL` still

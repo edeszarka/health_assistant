@@ -185,13 +185,22 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 ## AI Design and Evaluation
 **LLM — qwen2.5:3b**: Chosen on 2026-10-19 with the answer evaluation below,
 from three models that run on a CPU-only laptop (Ryzen 5 PRO 4650U, 16 GB RAM),
-English answers deciding (3 × 16 answers each):
+English answers deciding. Results of the re-run on 2026-11-02, with the raw output
+in [`backend/eval/results`](backend/eval/results/README.md):
 
-| Model | English pass rate | Answers with a number not in the prompt | Median / p90 reply, cold¹ | Reading / writing speed |
-|---|---|---|---|---|
-| **qwen2.5:3b** | **92%** | 8% | 64 s / 73 s | 23 / 5.8 tokens/s |
-| llama3.2:3b | 92% | 4% | not measured | — |
-| qwen2.5:1.5b | 81% | 15% | 31 s / 42 s | 46 / 11 tokens/s |
+| Model | English answers passed | English answers with a number not in the prompt | Hungarian answers passed |
+|---|---|---|---|
+| **qwen2.5:3b** | **44 of 48** | 2 of 48 | 7 of 12 |
+| llama3.2:3b | 44 of 48 | 4 of 48 | 5 of 12 |
+| qwen2.5:1.5b | 38 of 48 | 7 of 48 | 4 of 12 |
+
+Reply times were measured on 2026-10-19 with `--cold`, on the 16 English cases;
+that output was not kept:
+
+| Model | Median / p90 reply, cold¹ | Reading / writing speed |
+|---|---|---|
+| qwen2.5:3b | 64 s / 73 s | 23 / 5.8 tokens/s |
+| qwen2.5:1.5b | 31 s / 42 s | 46 / 11 tokens/s |
 
 ¹ With `--cold`, no prompt prefix is reused from Ollama's cache. The eval's
 fictional prompts are ~1100 tokens. A real lab question now carries only the
@@ -201,11 +210,13 @@ cached (before: ~2500 tokens, 150 s). Long answers, or the first question after
 Ollama unloaded the model, took 106–137 s. A follow-up whose prompt is cached
 takes ~25–50 s.
 
-The two 3B models tie on pass rate. `qwen2.5:3b` was chosen because its
-failures were general reference ranges quoted from memory, while
-`llama3.2:3b` invented a value for the user and attributed unsourced ranges to
-MedlinePlus; see [ADR 0010](docs/adr/0010-chat-model-choice.md). Hungarian
-answers are weak with every candidate (pass rate 58% at best). The `/no_think`
+The two 3B models tie on pass rate, and the difference in unsourced numbers is
+within run-to-run variation: on 2026-10-19 `llama3.2:3b` had the fewer of them.
+`qwen2.5:3b` was chosen because, in that earlier run, its failures were general
+reference ranges quoted from memory, while `llama3.2:3b` invented a value for the
+user and attributed unsourced ranges to MedlinePlus; see
+[ADR 0010](docs/adr/0010-chat-model-choice.md). Hungarian answers are weak with
+every candidate (7 of 12 at best). The `/no_think`
 prefix asks the model to answer directly, without extended reasoning.
 
 **Embedding — nomic-embed-text**: 768-dimensional embeddings via Ollama, 
@@ -216,16 +227,21 @@ measured by the RAG evaluation below; no external benchmark is relied on.
 **RAG Evaluation**: `python -m eval.retrieval_eval` (inside the backend
 container) runs 20 Hungarian/English lab and family-history questions plus 5
 off-topic ones against the live store. Relevance is judged by metadata (source
-type and normalised test name), so no health values are printed. Measured
-2026-10-17 and re-run unchanged on 2026-10-19 on 42 stored records (after removing parser header rows and
-duplicate uploads): the configured operating point (top-1, similarity >= 0.62)
-reaches recall 85% (Hungarian 70%, English 100%) at 85% precision, and none of
-the 5 off-topic questions retrieves a record. Retrieving more rows raises recall
-to at most 90% while precision drops to 32-50%.
+type and normalised test name), so no health values are printed. Measured on
+2026-11-02 on 42 stored records, with the raw output in
+[`backend/eval/results`](backend/eval/results/README.md): at the configured
+operating point (top-1, similarity >= 0.62), 17 of 20 questions retrieve a relevant
+record (Hungarian 7 of 10, English 10 of 10), the other 3 retrieve a wrong one, and
+none of the 5 off-topic questions retrieves anything. At the same threshold, more
+rows find at most 18 of 20, while only 32-50% of the rows are relevant. A lower
+threshold lets off-topic questions through (1 of 5 at 0.60). The sample is small
+and from one person's records, the point was chosen and reported on the same
+questions, and a clean clone cannot reproduce the run.
 Embedded texts carry the report's own Hungarian test names and nomic's
-`search_document:`/`search_query:` prefixes; before these changes Hungarian
-recall was at most 40%. After changing the embedding model or the text
-templates, run `python -m scripts.reembed` and re-run the eval.
+`search_document:`/`search_query:` prefixes; the commit that added this reports
+Hungarian recall of at most 40% before it (`3d5177b`; that output was not kept).
+After changing the embedding model or the text templates, run
+`python -m scripts.reembed` and re-run the eval.
 
 **Answer Evaluation**: `python -m eval.answer_eval --model <name>` (inside the
 backend container) asks the chat model 16 English and 4 Hungarian questions

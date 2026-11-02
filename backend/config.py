@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     database_url: str
     sync_database_url: str
     ollama_base_url: str = "http://localhost:11434"
-    # Chosen with the answer eval on 2026-10-19 (docs/adr/0010): English pass
-    # rate 92%, median reply 23 s on a CPU-only laptop.
+    # Chosen with the answer eval (docs/adr/0010). Re-run on 2026-11-02: 44 of 48
+    # English answers passed (backend/eval/results). Cold median reply on a
+    # CPU-only laptop: 64 s (measured 2026-10-19).
     ollama_model: str = "qwen2.5:3b"
     # Context window of the chat model, sent as Ollama's num_ctx (Ollama's
     # default was 4096). The system prompt alone is ~2.3-3k tokens (measured
@@ -26,12 +27,12 @@ class Settings(BaseSettings):
     medlineplus_connect_url: str = "https://connect.medlineplus.gov/service"
     medlineplus_cache_ttl_days: int = 7
     # RAG operating point, chosen with `python -m eval.retrieval_eval` on 20 HU/EN
-    # questions + 5 off-topic ones (2026-10-17, nomic-embed-text with task
-    # prefixes, 42 stored records): top-1 at >= 0.62 gave recall 85% (HU 70%,
-    # EN 100%) at 85% precision with no off-topic hits. More results raised
-    # recall to at most 90% but dropped precision to 32-50%, which distracts a
-    # small chat model. Re-run the eval after changing the embedding model,
-    # templates or data.
+    # questions + 5 off-topic ones (nomic-embed-text with task prefixes, 42 stored
+    # records). Measured 2026-11-02 (backend/eval/results): top-1 at >= 0.62 gets a
+    # relevant row for 17 of 20 questions (HU 7 of 10, EN 10 of 10) and 0 of 5
+    # off-topic hits. More results at this threshold find at most 18 of 20, with
+    # only 32-50% of the rows relevant, which distracts a small chat model. Re-run
+    # the eval after changing the embedding model, templates or data.
     rag_similarity_threshold: float = 0.62
     rag_top_k: int = 1
     # Age after which a stored risk input is shown as "stale" on the risk form.
