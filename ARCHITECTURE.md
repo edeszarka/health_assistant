@@ -299,7 +299,8 @@ Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-w
 
 4. **The backend's only external call is MedlinePlus; it receives condition
    or topic terms only:**
-   - the ICD-10 code the user entered for a family-history entry; the
+   - the ICD-10 code the user entered for a family-history entry, accepted only
+     in the shape of a code (`ICD10_CODE`, `backend/models/api_models.py`); the
      free-text condition is never sent (`backend/routers/family_history.py:95-97`);
    - screening condition names from the hard-coded `SCREENING_RULES`
      (`backend/services/screening_service.py:42,178`). Which names are sent

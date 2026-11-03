@@ -120,3 +120,38 @@ async def test_delete_also_removes_the_entry_embedding():
     assert "embeddings.source_id = 7" in delete_sql
     db.delete.assert_awaited_once_with(entry)
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.parametrize("raw, stored", [
+    ("E11", "E11"),
+    ("e11.9", "E11.9"),
+    ("E119", "E119"),
+    (" S72.001A ", "S72.001A"),
+    ("", None),
+    ("   ", None),
+    (None, None),
+])
+def test_icd10_code_is_normalised(raw, stored):
+    data = FamilyHistoryCreate(relation="mother", condition="x", icd10_code=raw)
+    assert data.icd10_code == stored
+
+
+@pytest.mark.parametrize("raw", [
+    "Kovács János", "cukorbetegség", "type 2 diabetes", "E", "11", "E11.12345", "E11 9",
+])
+def test_text_that_is_not_an_icd10_code_is_rejected(raw):
+    with pytest.raises(ValueError, match="ICD-10"):
+        FamilyHistoryCreate(relation="mother", condition="x", icd10_code=raw)
+
+
+@pytest.mark.asyncio
+async def test_text_in_the_code_field_never_reaches_medlineplus(client):
+    """Only a code may leave the host, whatever is typed into the field."""
+    with patch.object(family_history.medlineplus_service, "get_condition_info", AsyncMock()) as connect:
+        response = await client.post(
+            "/family-history/",
+            json={"relation": "mother", "condition": "x", "icd10_code": "Kovács János"},
+        )
+
+    assert response.status_code == 422
+    connect.assert_not_called()

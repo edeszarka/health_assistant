@@ -107,7 +107,9 @@ API docs available at: **http://localhost:8000/docs**
 3. Submit — the entry is embedded in the vector database for AI context
 4. With an ICD-10 code (e.g. `E11`), the entry shows the MedlinePlus summary
    and link, and the chat uses that text for family-history questions; only
-   the code is sent to MedlinePlus, once, when you save the entry
+   the code is sent to MedlinePlus, once, when you save the entry. The field
+   accepts only the shape of a code (`E11`, `E11.9`), so a name typed into it is
+   rejected; whether the code exists is not checked
 
 ### Chat with the AI
 1. Go to **💬 Chat**

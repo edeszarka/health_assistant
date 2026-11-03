@@ -1,7 +1,15 @@
 from __future__ import annotations
+import re
 from datetime import date, datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# ICD-10 shape: a letter, a digit, a digit or letter, then up to four more
+# characters, with or without the dot (E11, E11.9, E119, S72.001A). The code is
+# the only family-history text sent to MedlinePlus, so anything else in the
+# field, such as a name, must not get through. This checks the shape only, not
+# that the code exists.
+ICD10_CODE = re.compile(r"[A-Z][0-9][0-9A-Z](?:\.?[0-9A-Z]{1,4})?")
 
 
 # ─── Lab Results ────────────────────────────────────────────────────────────
@@ -85,6 +93,17 @@ class FamilyHistoryCreate(BaseModel):
     icd10_code: Optional[str] = None
     age_of_onset: Optional[int] = None
     notes: Optional[str] = None
+
+    @field_validator("icd10_code")
+    @classmethod
+    def _valid_icd10_code(cls, value: Optional[str]) -> Optional[str]:
+        """Normalise the code; a blank field means no code."""
+        code = (value or "").strip().upper()
+        if not code:
+            return None
+        if not ICD10_CODE.fullmatch(code):
+            raise ValueError("Not an ICD-10 code; expected a form like E11 or E11.9.")
+        return code
 
 
 class MedlinePlusInfo(BaseModel):
