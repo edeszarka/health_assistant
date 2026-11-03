@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _BASE_PROMPT = """/no_think
 
 You are a knowledgeable personal health assistant. Help the user understand their lab results,
-health trends (Samsung Health and Zepp Life wearable data), blood pressure, and preventive care.
+health trends (wearable data), blood pressure, and preventive care.
 
 LANGUAGE RULE: The user is writing in {user_language}. You MUST reply ENTIRELY in {user_language}.
 Do not switch languages. Even if the context data contains Hungarian or English medical terms,
