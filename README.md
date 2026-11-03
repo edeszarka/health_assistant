@@ -150,8 +150,8 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 ### View Recommendations
 1. Go to **📋 Recommendations**
 2. See a personalized checklist of health screenings based on your profile and
-   data. Without a stored profile, age 40 is assumed and sex-specific rules are
-   left out. Family-history triggers look for English words in the condition you
+   data. Without a stored profile the page shows no recommendations and points
+   to the risk form in the chat. Family-history triggers look for English words in the condition you
    typed (`diabetes`, `heart attack`), so "cukorbetegség" does not trigger one;
    lab triggers count every flagged result on record, also old ones
 3. Each item shows the reason, the suggested specialist and, when found, the

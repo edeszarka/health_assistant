@@ -20,14 +20,21 @@ router = APIRouter()
 async def get_recommendations(db: AsyncSession = Depends(get_db)) -> list[ScreeningRecommendation]:
     """Return personalised screening recommendations.
 
+    Without a stored profile there is nothing to personalise, so the list is
+    empty: the rules need a real age and sex, and the conditions they match
+    would otherwise be looked up on MedlinePlus for an invented person.
+
     Args:
         db: Async DB session.
+
+    Returns:
+        The matching recommendations; empty when no profile exists.
     """
     # User profile
     result = await db.execute(select(UserProfile).limit(1))
     profile = result.scalar_one_or_none()
-    age = getattr(profile, "age", 40)
-    sex = getattr(profile, "sex", "other")
+    if profile is None:
+        return []
 
     # Family history conditions
     result = await db.execute(select(FamilyHistory.condition))
@@ -45,8 +52,8 @@ async def get_recommendations(db: AsyncSession = Depends(get_db)) -> list[Screen
     findrisc_pts = risk_scores.get("findrisc_score")
 
     return await screening_service.get_recommendations(
-        age=age,
-        sex=sex,
+        age=profile.age,
+        sex=profile.sex,
         family_history_conditions=fam_conditions,
         flagged_lab_keys=flagged_keys,
         framingham_score=framingham_pct,
