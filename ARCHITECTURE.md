@@ -158,10 +158,12 @@ embedding, so chat retrieval no longer returns it
    MedlinePlus pages put into the prompt (`backend/routers/chat.py:951-955`).
 
 ### Recommendations — `GET /recommendations/`
-Baseline risk scores are computed and persisted, then hard-coded
-`SCREENING_RULES` are matched against age, sex, family history and flagged labs;
-each matched condition is looked up on MedlinePlus for a summary and link
-(`backend/routers/recommendations.py:36-55`,
+Without a stored profile the list is empty and nothing is computed or looked up
+(`backend/routers/recommendations.py:36-37`). Otherwise baseline risk scores are
+computed and persisted, then hard-coded `SCREENING_RULES` are matched against age,
+sex, family history and flagged labs; each matched condition is looked up on
+MedlinePlus for a summary and link
+(`backend/routers/recommendations.py:39-62`,
 `backend/services/screening_service.py:42,143,178`).
 
 ### Risk inputs and scores — `GET/PUT /risk/inputs`, `POST /risk/calculate`
