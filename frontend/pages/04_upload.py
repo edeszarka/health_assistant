@@ -26,12 +26,12 @@ def _mime(filename: str) -> str:
 with tab_pdf:
     st.subheader("Upload a Lab Result PDF")
     st.info(
-        "The AI will extract lab values automatically. "
+        "Lab values are extracted automatically with a rule-based parser. "
         "Supports Hungarian, Latin, and English medical terminology."
     )
     pdf_file = st.file_uploader("Choose a PDF file", type=["pdf"], key="pdf_upload")
     if pdf_file and st.button("Process PDF", key="process_pdf"):
-        with st.spinner("Extracting lab values via AI (this may take up to 60s)…"):
+        with st.spinner("Extracting lab values (this may take up to 60s)…"):
             try:
                 resp = httpx.post(
                     f"{BACKEND}/upload/pdf",
