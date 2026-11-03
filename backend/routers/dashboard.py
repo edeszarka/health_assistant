@@ -1,6 +1,9 @@
 """Dashboard router: aggregated health summary."""
 from __future__ import annotations
 
+from datetime import date
+from typing import Iterable
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +15,24 @@ from routers.blood_pressure import bp_summary
 
 router = APIRouter()
 
+# How many of the most recently stored lab rows the summary lists.
+LATEST_LABS_LIMIT = 10
+
+
+def latest_result_per_test(labs: Iterable[LabResult]) -> list[LabResult]:
+    """Return each test's latest result, by test date and then by storage order.
+
+    Args:
+        labs: Lab rows in any order.
+
+    Returns:
+        One row per test, sorted by test name.
+    """
+    latest: dict[str, LabResult] = {}
+    for lab in sorted(labs, key=lambda row: (row.test_date or date.min, row.id)):
+        latest[lab.test_name] = lab
+    return [latest[name] for name in sorted(latest)]
+
 
 @router.get("/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> DashboardSummary:
@@ -20,20 +41,19 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
     Args:
         db: Async DB session.
     """
-    # Latest 10 lab results
-    stmt = (
-        select(LabResult)
-        .order_by(LabResult.created_at.desc())
-        .limit(10)
-    )
+    stmt = select(LabResult).order_by(LabResult.created_at.desc(), LabResult.id.desc())
     result = await db.execute(stmt)
+    labs = result.scalars().all()
     latest_labs = [
-        LabResultResponse.model_validate(r) for r in result.scalars().all()
+        LabResultResponse.model_validate(r) for r in labs[:LATEST_LABS_LIMIT]
     ]
 
-    # Active flags
-    flagged = [lab for lab in latest_labs if lab.is_flagged]
-    active_flags = [f"{lab.test_name}: {lab.value} {lab.unit}" for lab in flagged]
+    # Active flags: every test whose latest result is flagged, wherever it was stored
+    active_flags = [
+        f"{lab.test_name}: {lab.value} {lab.unit or ''}".strip()
+        for lab in latest_result_per_test(labs)
+        if lab.is_flagged
+    ]
 
     # BP summary (reuse existing endpoint logic)
     try:
