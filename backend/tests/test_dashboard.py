@@ -100,3 +100,39 @@ async def test_latest_labs_stay_the_ten_newest_rows():
     summary = await _summary(_fake_db(labs, []))
 
     assert [lab.id for lab in summary.latest_labs] == list(range(14, 4, -1))
+
+
+@pytest.mark.asyncio
+async def test_blood_pressure_rows_do_not_push_out_the_risk_scores():
+    """Five newer BP readings must not hide the risk scores."""
+    scores = [_score("bp_classification") for _ in range(5)]
+    scores += [_score("framingham", 8.0), _score("findrisc", 7.0)]
+
+    summary = await _summary(_fake_db([], scores))
+
+    assert [s["score_type"] for s in summary.risk_scores] == ["framingham", "findrisc"]
+
+
+@pytest.mark.asyncio
+async def test_only_the_newest_score_of_each_type_is_shown():
+    scores = [_score("findrisc", 9.0), _score("findrisc", 7.0)]
+
+    summary = await _summary(_fake_db([], scores))
+
+    assert [s["score_value"] for s in summary.risk_scores] == [9.0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", [
+    SimpleNamespace(sex="female", diabetes_diagnosed=False, age=50),
+    SimpleNamespace(sex="male", diabetes_diagnosed=True, age=50),
+    SimpleNamespace(sex="male", diabetes_diagnosed=False, age=85),
+    None,
+], ids=["female", "diabetes", "age", "no_profile"])
+async def test_saved_framingham_is_hidden_when_it_no_longer_applies(profile):
+    """An older saved score stays in the table but must not be shown (Invariant 8)."""
+    scores = [_score("framingham", 8.0), _score("findrisc", 7.0)]
+
+    summary = await _summary(_fake_db([], scores, profile))
+
+    assert [s["score_type"] for s in summary.risk_scores] == ["findrisc"]
