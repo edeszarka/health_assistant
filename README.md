@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/edeszarka/health_assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/edeszarka/health_assistant/actions/workflows/ci.yml)
 
-> **A local-first personal health intelligence assistant powered by Llama 3.2, PostgreSQL/pgvector, and Streamlit.**
+> **A local-first personal health intelligence assistant powered by Qwen2.5 (via Ollama), PostgreSQL/pgvector, and Streamlit.**
 
 > ⚠️ **Disclaimer**: This software is for **informational purposes only**. It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare professional.
 
@@ -43,12 +43,12 @@
 - 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); a deterministic pdfplumber + regex parser extracts values for dictionary-based normalisation, and any parsing warnings are surfaced in the UI
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
-- 📱 **Samsung Health Import** – Robust ZIP parser for steps, sleep, heart rate, and body metrics; handles subfolder exports, prevents duplicates, and includes detailed logging for troubleshooting.
+- 📱 **Samsung Health Import** – ZIP parser for steps, distance, active calories, sleep, heart rate, weight and BMI; finds the files in subfolders of the export. One value is kept per metric per day (the last row read, not a sum or average). Re-importing updates those daily rows instead of duplicating them, but each upload adds another summary embedding. Parse failures are logged as warnings.
 - 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
 - 🎯 **Risk Scores** – Framingham 10-year CHD risk (men aged 20-79 without diabetes), FINDRISC diabetes risk
-- 🔒 **Privacy-first** – Your health records stay local; only MedlinePlus (NIH public API) is called externally, with lookup terms only (see [Data Privacy](#data-privacy))
+- 🔒 **Privacy-first** – Your health records stay local; at run time the app calls only MedlinePlus (NIH public API) externally, with lookup terms only, and `docker compose up` contacts the Ollama registry for the models (see [Data Privacy](#data-privacy))
 
 ---
 
@@ -74,10 +74,11 @@ cp .env.example .env
 
 # 3. Start everything
 # This will automatically pull the AI models (qwen2.5:3b, nomic-embed-text)
-docker-compose up -d
+docker compose up -d
 
 # 4. Open the app
-# (Wait a minute on first run for models to download)
+# (On first run the backend starts only after the models have downloaded,
+# which can take a while depending on your connection)
 start http://localhost:8501   # Frontend (Windows)
 # open http://localhost:8501  # macOS/Linux
 ```
@@ -115,7 +116,10 @@ API docs available at: **http://localhost:8000/docs**
 4. For lab and family-history questions it also gets MedlinePlus text (what a
    test measures, what a condition is); the MedlinePlus pages used are listed
    under the answer as sources
-5. All responses end with a reminder to consult your doctor
+5. The prompt asks the model to end health advice with a reminder to consult
+   your doctor. Nothing enforces this: in the 2026-11-02 answer eval,
+   `qwen2.5:3b` did so in 31 of 48 English and 0 of 12 Hungarian answers (plain
+   value lookups included), and replies produced without the LLM do not add it
 
 To enable the MedlinePlus lab texts, fill the cache once (51 requests to NLM,
 the same fixed list of lab-test codes for everyone; rerun now and then to
@@ -140,13 +144,17 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 
 ### View Recommendations
 1. Go to **📋 Recommendations**
-2. See a personalized checklist of health screenings based on your profile and data
-3. Click on conditions to see detailed info from MedlinePlus
+2. See a personalized checklist of health screenings based on your profile and
+   data. Without a stored profile, age 40 is assumed and sex-specific rules are
+   left out
+3. Each item shows the reason, the suggested specialist and, when found, the
+   MedlinePlus summary and a link button. The tick boxes are not saved
 
 ### Import Samsung Health Data
 1. Go to **📂 Upload**
 2. Select the "Samsung Health" tab
 3. Upload your ZIP export
+4. Click **Process Samsung Data**
 
 ---
 
@@ -154,10 +162,11 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 
 | What | Status |
 |---|---|
-| Lab results | ✅ Stored only in your local PostgreSQL |
+| Lab results | ✅ Stored only locally: in PostgreSQL, and the uploaded PDF in `data/uploads/` |
 | Blood pressure | ✅ Stored only in your local PostgreSQL |
 | Family history | ✅ Stored only in your local PostgreSQL |
 | AI inference | ✅ Runs entirely on Ollama (local) |
+| Model download | ⚠️ On `docker compose up`, the `ollama-pull` job contacts the Ollama registry for the two models. It sends model names only, no health data |
 | MedlinePlus queries | ⚠️ Lookup terms only: screening condition names, the ICD-10 codes you enter for family history (free-text conditions are never sent), and a fixed list of lab-test codes that is the same for every user. Chat questions send nothing to MedlinePlus. No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
 | `/data/` folder | 🚫 In `.gitignore` — never committed |
 | `.env` file | 🚫 In `.gitignore` — never committed |
@@ -171,12 +180,12 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 | Backend | FastAPI 0.110+, Python 3.12, Pydantic v2 |
 | Frontend | Streamlit, Pandas |
 | Database | PostgreSQL 16 + pgvector extension |
-| ORM | SQLAlchemy 2.0 (async) + Alembic |
+| ORM | SQLAlchemy 2.0 (async); tables created at startup with `create_all` (Alembic is configured, but there are no migrations yet) |
 | LLM | Ollama — qwen2.5:3b |
 | Embeddings | Ollama — nomic-embed-text (768d) |
 | Orchestration | None — direct Ollama REST calls via httpx |
 | Parsing | pdfplumber |
-| External API | MedlinePlus Web Service (NIH, no key) |
+| External API | MedlinePlus Web Service and MedlinePlus Connect (NIH, no key) |
 | Testing | pytest, pytest-asyncio, httpx |
 | Containers | Docker + Docker Compose |
 
@@ -270,15 +279,17 @@ unmapped entries. No LLM is involved in this path.
 
 ## Development
 
-> 💡 **Developer Tip**: Docker bind-mounts `backend/` into the backend container and runs uvicorn with `--reload`, so backend changes are reflected immediately without rebuilding. The frontend is baked into its image with no mount or reload, so frontend changes require `docker-compose up -d --build frontend`.
+> 💡 **Developer Tip**: Docker bind-mounts `backend/` into the backend container and runs uvicorn with `--reload`, so backend changes are reflected immediately without rebuilding. The frontend is baked into its image with no mount or reload, so frontend changes require `docker compose up -d --build frontend`.
 
 ### Run tests
 ```bash
 # Inside the backend container (Recommended)
-docker exec health_assistant-backend-1 pytest tests/ -v
+docker compose exec backend pytest tests/ -v
 
-# Locally (requires dependencies)
+# Locally (requires the dependencies and both database URLs, which Settings needs)
 cd backend
+DATABASE_URL=postgresql+asyncpg://healthuser:pw@localhost:5432/healthassistant \
+SYNC_DATABASE_URL=postgresql+psycopg2://healthuser:pw@localhost:5432/healthassistant \
 pytest tests/ -v
 ```
 
@@ -302,6 +313,10 @@ Edit `backend/ingestion/unit_converter.py` → add the mmol/L → mg/dL factor t
 ```
 
 ### Generate a new Alembic migration
+The repository has no migrations yet: `create_all` creates missing tables when
+the backend starts and does not change existing ones. A table the app has
+already created therefore does not appear in an autogenerated migration. The
+commands need `DATABASE_URL` and `SYNC_DATABASE_URL`, as above.
 ```bash
 cd backend
 alembic revision --autogenerate -m "describe your change"
@@ -354,7 +369,7 @@ data changes. For append-only health data this is acceptable; production would r
 an embedding refresh pipeline.
 
 **PII handling**: Uploaded lab PDFs are retained verbatim on disk under
-`uploads/`, and the `LabResult.source_filename` column stores only a generated
+`data/uploads/` on the host (`/app/uploads` in the container), and the `LabResult.source_filename` column stores only a generated
 upload identifier (timestamp + UUID) — never the original filename, which could
 embed the patient's name. The retained PDF itself can still contain the
 patient's name and other identifiers in plaintext, so production deployment
