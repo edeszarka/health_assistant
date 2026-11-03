@@ -51,6 +51,11 @@ if submitted and condition:
         resp.raise_for_status()
         st.success("Record added!")
         st.cache_data.clear()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 422:
+            st.error("Not saved: the ICD-10 code must look like E11 or E11.9.")
+        else:
+            st.error(f"Failed: {e}")
     except Exception as e:
         st.error(f"Failed: {e}")
 
