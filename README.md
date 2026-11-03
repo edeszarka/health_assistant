@@ -40,11 +40,11 @@
 
 ## Features
 
-- 📂 **Lab PDF Import** – Upload medical PDFs (Hungarian/Latin/English); a deterministic pdfplumber + regex parser extracts values for dictionary-based normalisation, and any parsing warnings are surfaced in the UI
+- 📂 **Lab PDF Import** – Upload lab PDFs in two Hungarian report layouts, with Hungarian, Latin or English test names; a deterministic pdfplumber + regex parser extracts values for dictionary-based normalisation, and any parsing warnings are surfaced in the UI
 - 💉 **Blood Pressure Tracker** – Log readings; auto-classified per AHA 2017 guidelines
 - 🧬 **Family History** – Record hereditary conditions with ICD-10 codes
 - 📱 **Samsung Health Import** – ZIP parser for steps, distance, active calories, sleep, heart rate, weight and BMI; finds the files in subfolders of the export. One value is kept per metric per day (the last row read, not a sum or average). Re-importing updates those daily rows instead of duplicating them, but each upload adds another summary embedding. Parse failures are logged as warnings.
-- 🤖 **AI Health Chat** – RAG-augmented conversation using your actual data; responds in the user's language (HU/EN)
+- 🤖 **AI Health Chat** – Conversation over your own data: keyword matching selects records from SQL, and semantic search (RAG) adds at most one more; responds in the user's language (HU/EN)
 - 📊 **Dashboard** – Flagged labs, BP trends, risk scores at a glance
 - 📋 **Screening Recommendations** – Personalised USPSTF-based checklist with MedlinePlus links
 - 🎯 **Risk Scores** – Framingham 10-year CHD risk (men aged 20-79 without diabetes), FINDRISC diabetes risk
@@ -92,7 +92,7 @@ API docs available at: **http://localhost:8000/docs**
 ### Upload a Lab PDF
 1. Go to **📂 Upload** in the sidebar
 2. Select the "Lab PDF" tab
-3. Upload your PDF (supports Hungarian, Latin, or English medical terminology)
+3. Upload your PDF (EESZT or legacy/Corden layout; test names can be Hungarian, Latin or English)
 4. Click **Process PDF** — values are parsed and normalised automatically (no LLM involved); any parsing warnings appear below the result
 
 ### Log Blood Pressure
@@ -114,7 +114,10 @@ API docs available at: **http://localhost:8000/docs**
 ### Chat with the AI
 1. Go to **💬 Chat**
 2. Ask anything in **Hungarian or English** — the AI responds in kind
-3. The assistant uses your actual lab values, BP history, and family history
+3. Keyword matching decides which of your data goes into the prompt: lab values,
+   the latest blood pressure with an average, family history, wearable metrics.
+   A question that matches no keyword gets all of them, and semantic search
+   adds at most one stored record
 4. For lab and family-history questions it also gets MedlinePlus text (what a
    test measures, what a condition is); the MedlinePlus pages used are listed
    under the answer as sources
@@ -148,7 +151,9 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 1. Go to **📋 Recommendations**
 2. See a personalized checklist of health screenings based on your profile and
    data. Without a stored profile, age 40 is assumed and sex-specific rules are
-   left out
+   left out. Family-history triggers look for English words in the condition you
+   typed (`diabetes`, `heart attack`), so "cukorbetegség" does not trigger one;
+   lab triggers count every flagged result on record, also old ones
 3. Each item shows the reason, the suggested specialist and, when found, the
    MedlinePlus summary and a link button. The tick boxes are not saved
 
@@ -168,7 +173,7 @@ docker compose exec -w /app backend python -m scripts.warm_medlineplus --apply
 | Blood pressure | ✅ Stored only in your local PostgreSQL |
 | Family history | ✅ Stored only in your local PostgreSQL |
 | AI inference | ✅ Runs entirely on Ollama (local) |
-| Model download | ⚠️ On `docker compose up`, the `ollama-pull` job contacts the Ollama registry for the two models. It sends model names only, no health data |
+| Model download | ⚠️ On `docker compose up`, the `ollama-pull` job contacts the Ollama registry for the two models. No health data is sent |
 | MedlinePlus queries | ⚠️ Lookup terms only: screening condition names, the ICD-10 codes you enter for family history (free-text conditions are never sent), and a fixed list of lab-test codes that is the same for every user. Chat questions send nothing to MedlinePlus. No names, lab values or other records are sent, but the set of lookups can indirectly reflect your profile. Details: [ARCHITECTURE.md › External calls](ARCHITECTURE.md#external-calls) |
 | `/data/` folder | 🚫 In `.gitignore` — never committed |
 | `.env` file | 🚫 In `.gitignore` — never committed |
@@ -214,8 +219,9 @@ that output was not kept:
 | qwen2.5:1.5b | 31 s / 42 s | 46 / 11 tokens/s |
 
 ¹ With `--cold`, no prompt prefix is reused from Ollama's cache. The eval's
-fictional prompts are ~1100 tokens. A real lab question now carries only the
-asked-about and flagged labs ([ADR 0012](docs/adr/0012-lab-context-asked-and-flagged.md)),
+fictional prompts are ~1100 tokens. A real lab question now carries in full only the
+asked-about and flagged labs, plus the risk-score labs and rising trends when it
+names no test, and lists other tests by name ([ADR 0012](docs/adr/0012-lab-context-asked-and-flagged.md)),
 a ~1100–1300-token prompt, and took **73–81 s** live with `qwen2.5:3b` when not
 cached (before: ~2500 tokens, 150 s). Long answers, or the first question after
 Ollama unloaded the model, took 106–137 s. A follow-up whose prompt is cached
@@ -259,9 +265,11 @@ backend container) asks the chat model 16 English and 4 Hungarian questions
 over fictional data (`backend/eval/answer_cases.json`) through the real system
 prompt, and scores each answer with deterministic checks
 (`backend/eval/answer_scoring.py`): the expected values are quoted, no number
-appears that was not in the prompt, missing data is reported as missing, a
-prompt injection inside a data block is not followed, and the answer is in the
-question's language. It reports the pass rate per language and the median
+appears that was not in the prompt (whole numbers up to 10 and years are not
+checked), missing data is reported as missing, a prompt injection inside a data
+block is not followed (one case), and the answer is in the question's language.
+The cases supply hand-written context and the language, so language and intent
+detection, the SQL context and retrieval are not part of this eval. It reports the pass rate per language and the median
 latency. English cases decide the model choice; Hungarian ones are reported
 for information. The checks are necessary, not sufficient: there is no LLM
 judge, so a wrong claim built from correct numbers passes (seen with
@@ -352,7 +360,9 @@ mode. Rows that cannot be parsed (qualitative or inequality-bounded results, e.g
 eGFR reported as ">90") are silently skipped — the upload `warnings` list reports
 document-level issues (missing or malformed sample date) and the number of dropped
 header-like rows (patient/document fields repeated on later pages), not individual
-skipped result rows. Production would require a human review step for parsed
+skipped result rows. The sample date is recognised only from a Hungarian "Mintavétel" line.
+Without one the upload warns, and its rows are stored but left out of the chat's
+lab block. Production would require a human review step for parsed
 values.
 
 **No human-in-the-loop for parsed data**: Automated parsing of medical values without
@@ -361,14 +371,16 @@ Production health systems require a data-verification UI before persistence.
 
 **CPU-only LLM**: On a CPU-only laptop, `qwen2.5:3b` reads the prompt at about
 23 tokens/s and writes at about 6 tokens/s. A question with a small prompt
-takes ~30 s; a lab question (~1100–1300-token prompt, only the asked-about and
-flagged labs) takes about 75–80 s when the prompt is not cached, and up to
+takes ~30 s; a lab question (~1100–1300-token prompt, narrowed lab block) takes about 75–80 s when the prompt is not cached, and up to
 ~140 s for a long answer or right after the model was unloaded.
 Production deployment would require GPU inference or a hosted model endpoint.
 
 **Embedding staleness**: Embeddings are created at upload time and not updated if source
-data changes. For append-only health data this is acceptable; production would require
-an embedding refresh pipeline.
+data changes. Through the app, lab results and family history are added rather than edited,
+which makes this acceptable; deleting a family-history entry also deletes its
+embedding. Daily Samsung rows can be overwritten, but only an upload summary is
+embedded, and lab values typed into the risk form are not embedded. Production
+would require an embedding refresh pipeline.
 
 **PII handling**: Uploaded lab PDFs are retained verbatim on disk under
 `data/uploads/` on the host (`/app/uploads` in the container), and the `LabResult.source_filename` column stores only a generated
@@ -381,7 +393,9 @@ would require field-level encryption and a clear data retention policy.
 PDFs are converted to mg/dL only when the stored unit is recognised. Conversion
 is supported for total cholesterol, LDL, HDL, triglycerides and glucose. A value
 with a missing or unrecognised unit is skipped rather than assumed, so a risk
-score may be unavailable instead of wrong.
+score may be unavailable instead of wrong. Exception: a cholesterol value typed
+into a "what if" question has no unit and is read as mg/dL; a value in the mmol/L
+range fails the plausibility check, and no hypothetical score is shown.
 
 **Framingham covers men aged 20-79 without diabetes**: the score uses the NCEP
 ATP III point table for men. No score is shown or saved for women, because no
