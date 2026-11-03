@@ -184,8 +184,11 @@ each matched condition is looked up on MedlinePlus for a summary and link
   (`backend/routers/risk.py`).
 
 ### Dashboard — `GET /dashboard/summary`
-Reads lab results and the five latest `risk_scores` rows
-(`backend/routers/dashboard.py:25,45`).
+Lists the ten most recently stored lab rows and flags every test whose latest
+result is out of range, by test date (`backend/routers/dashboard.py:27,86`).
+Shows the newest saved FINDRISC and Framingham score, not the
+`bp_classification` rows of the same table
+(`backend/routers/dashboard.py:42,106`).
 
 ---
 
@@ -335,8 +338,9 @@ Decision records behind the invariants: 1 → [0002](docs/adr/0002-lab-parsing-w
    computed or saved (`backend/services/risk_score_service.py:155-159`), the
    risk form shows the reason (`backend/services/risk_inputs.py:218-221`), and a
    "what if" question gets an explicit "Not available" instead of a number
-   (`backend/routers/chat.py:733-737`). `calculate_framingham` itself refuses
-   another sex or age. Table values are locked by
+   (`backend/routers/chat.py:733-737`). A score saved earlier stays in the table
+   but is not shown on the dashboard (`backend/routers/dashboard.py:42`).
+   `calculate_framingham` itself refuses another sex or age. Table values are locked by
    `backend/tests/test_risk_published_tables.py`.
 
 ### (b) Targets — NOT yet implemented
